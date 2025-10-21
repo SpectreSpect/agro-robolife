@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+agro_processing.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/processing_history.db
+
+# Uploaded files
+uploads/
+outputs/
+
+# Excel temporary files
+~$*.xlsx
+~$*.xls
+
+# Output files
+output_processed_*.xlsx
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# pytest
+.pytest_cache/
+.coverage
+
+# mypy
+.mypy_cache/
+

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система обработки сельскохозяйственных данных</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌾 Система обработки сельскохозяйственных данных</h1>
+            <p class="subtitle">Загрузите Excel файлы для обработки и получите структурированный отчет</p>
+        </header>
+
+        <main>
+            <!-- Секция загрузки файлов -->
+            <section class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <h3>Перетащите файлы сюда</h3>
+                    <p>или нажмите для выбора</p>
+                    <input type="file" id="fileInput" multiple accept=".xlsx,.xls" style="display: none;">
+                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                        Выбрать файлы
+                    </button>
+                </div>
+
+                <!-- Список загруженных файлов -->
+                <div id="filesList" class="files-list" style="display: none;">
+                    <h3>Загруженные файлы:</h3>
+                    <ul id="filesListItems"></ul>
+                    <div class="upload-actions">
+                        <button class="btn btn-success" id="processBtn" onclick="processFiles()">
+                            ✓ Обработать файлы
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearFiles()">
+                            ✕ Очистить
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Статус обработки -->
+                <div id="processingStatus" class="processing-status" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Обработка файлов...</p>
+                </div>
+            </section>
+
+            <!-- История обработок -->
+            <section class="history-section">
+                <div class="section-header">
+                    <h2>📊 История обработок</h2>
+                    <button class="btn btn-sm" onclick="loadHistory()">🔄 Обновить</button>
+                </div>
+                <div id="historyList" class="history-list">
+                    <p class="loading">Загрузка...</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Система обработки сельскохозяйственных данных</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
+
