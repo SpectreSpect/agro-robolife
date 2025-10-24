@@ -75,6 +75,10 @@ async function handleFiles(files) {
         displayUploadedFiles(data.files);
         hideProcessingStatus();
         
+        // Убеждаемся, что кнопка обработки активна
+        const processBtn = document.getElementById('processBtn');
+        processBtn.disabled = false;
+        
     } catch (error) {
         console.error('Ошибка:', error);
         alert('Ошибка при загрузке файлов: ' + error.message);
@@ -104,6 +108,10 @@ function clearFiles() {
     document.getElementById('filesList').style.display = 'none';
     document.getElementById('uploadArea').style.display = 'block';
     document.getElementById('fileInput').value = '';
+    
+    // Сброс состояния кнопки обработки
+    const processBtn = document.getElementById('processBtn');
+    processBtn.disabled = false;
 }
 
 async function processFiles() {
