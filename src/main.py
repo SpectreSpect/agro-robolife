@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import argparse
 from pathlib import Path
 from datetime import datetime
 
@@ -21,15 +22,29 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    # Парсинг аргументов командной строки
+    parser = argparse.ArgumentParser(
+        description="Система обработки сельскохозяйственных данных"
+    )
+    parser.add_argument(
+        "--llm",
+        action="store_true",
+        help="Использовать LLM-based парсинг вместо legacy парсеров"
+    )
+    args = parser.parse_args()
 
     logger.info("=" * 80)
     logger.info("    Система обработки сельскохозяйственных данных")
+    if args.llm:
+        logger.info("    Режим: LLM-based парсинг")
+    else:
+        logger.info("    Режим: Legacy парсеры")
     logger.info("=" * 80)
 
     try:
 
         data_reader = DataReader("data")
-        data_parser = DataParser(Path("data"))
+        data_parser = DataParser(Path("data"), use_llm=args.llm)
         table_builder = TableBuilder("templates/dashboard_template.xlsx")
 
         logger.info("\n1️⃣ Чтение метаданных файлов...")

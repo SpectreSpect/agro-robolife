@@ -7,6 +7,15 @@ import re
 
 logger = logging.getLogger(__name__)
 
+# Пытаемся импортировать LLM парсер
+try:
+    from .llm_parser import LLMParser
+    LLM_AVAILABLE = True
+    logger.info("LLM Parser доступен")
+except ImportError as e:
+    LLM_AVAILABLE = False
+    logger.info(f"LLM Parser недоступен: {e}")
+
 
 def extract_date_from_filename(filename: str) -> Optional[datetime]:
 
@@ -267,11 +276,93 @@ class OperationalReportParser:
 
 class DataParser:
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, use_llm: bool = False):
         self.data_dir = data_dir
+        self.use_llm = use_llm and LLM_AVAILABLE
+        
+        # Инициализируем LLM парсер если нужно
+        if self.use_llm:
+            try:
+                self.llm_parser = LLMParser()
+                logger.info("🤖 Используется LLM-based парсинг")
+            except Exception as e:
+                logger.warning(f"Не удалось инициализировать LLM Parser: {e}")
+                logger.info("Откат на legacy парсеры")
+                self.use_llm = False
+                self.llm_parser = None
+        else:
+            self.llm_parser = None
+            logger.info("📋 Используются legacy парсеры")
 
     def parse_all_files(self) -> List[Dict[str, Any]]:
 
+        all_data = []
+        
+        # LLM ветка
+        if self.use_llm:
+            return self._parse_with_llm()
+        
+        # Legacy ветка
+        return self._parse_legacy()
+    
+    def _parse_with_llm(self) -> List[Dict[str, Any]]:
+        """Парсинг файлов через LLM"""
+        all_data = []
+        
+        # Получаем все Excel файлы
+        excel_files = sorted(self.data_dir.glob("*.xlsx"))
+        logger.info(f"Найдено {len(excel_files)} файлов для LLM парсинга")
+        
+        for file_path in excel_files:
+            # Пропускаем временные файлы
+            if file_path.name.startswith("~$") or file_path.name.startswith("."):
+                continue
+            
+            try:
+                logger.info(f"LLM парсинг: {file_path.name}")
+                records = self.llm_parser.parse_file(file_path)
+                
+                if records:
+                    all_data.extend(records)
+                    logger.info(f"  ✅ Извлечено {len(records)} записей")
+                else:
+                    logger.warning(f"  ⚠️ Не извлечено данных из {file_path.name}")
+                    
+                    # Fallback на legacy если включен
+                    try:
+                        legacy_data = self._try_legacy_parse(file_path)
+                        if legacy_data:
+                            all_data.extend(legacy_data)
+                            logger.info(f"  ✓ Fallback: извлечено {len(legacy_data)} записей")
+                    except Exception as e:
+                        logger.debug(f"  Fallback не удался: {e}")
+                
+            except Exception as e:
+                logger.error(f"  ❌ Ошибка LLM парсинга {file_path.name}: {e}")
+                
+                # Пытаемся legacy парсер как fallback
+                try:
+                    legacy_data = self._try_legacy_parse(file_path)
+                    if legacy_data:
+                        all_data.extend(legacy_data)
+                        logger.info(f"  ✓ Fallback: извлечено {len(legacy_data)} записей")
+                except Exception as e2:
+                    logger.debug(f"  Fallback не удался: {e2}")
+        
+        # Статистика
+        if self.llm_parser:
+            stats = self.llm_parser.get_statistics()
+            logger.info(f"\nLLM Статистика:")
+            logger.info(f"  Запросов: {stats['total_requests']}")
+            logger.info(f"  Токенов: {stats['total_tokens']}")
+            logger.info(f"  Стоимость: ${stats['total_cost']:.4f}")
+            logger.info(f"  Cache hit rate: {stats['cache_size']} записей")
+        
+        logger.info(f"\nВсего извлечено: {len(all_data)} записей")
+        return all_data
+    
+    def _parse_legacy(self) -> List[Dict[str, Any]]:
+        """Legacy парсинг (старая логика)"""
         all_data = []
 
         daily_report_files = sorted(
@@ -329,3 +420,16 @@ class DataParser:
         logger.info(f"  - Из оперативной отчетности: {operational_count}")
 
         return all_data
+    
+    def _try_legacy_parse(self, file_path: Path) -> List[Dict[str, Any]]:
+        """Пытается распарсить файл legacy парсерами"""
+        filename = file_path.name.lower()
+        
+        if "дневного_отчета" in filename:
+            parser = DailyReportParser(file_path)
+            return parser.parse()
+        elif "оперативная_отчетность" in filename:
+            parser = OperationalReportParser(file_path)
+            return parser.parse()
+        else:
+            return []
