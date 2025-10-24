@@ -16,7 +16,7 @@ class BotManager:
     def __init__(self):
         self.fastapi_url = config.fastapi_url
         self.user_sessions: Dict[int, Dict[str, Any]] = {}
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        self.http_client = httpx.AsyncClient(timeout=600.0)
 
     async def check_fastapi_health(self) -> bool:
 
