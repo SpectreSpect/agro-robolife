@@ -15,6 +15,69 @@ class LLMClient:
         )
         self.model = "gpt-4o-mini"
     
+    def determine_table_type(
+        self, 
+        sheet_data: Dict[str, Any], 
+        file_name: str
+    ) -> str:
+        
+        try:
+            rows_data = sheet_data.get("rows", [])
+            rows_sample = rows_data[:20] if len(rows_data) > 20 else rows_data
+            
+            prompt = f"""Determine the type of this Excel table.
+
+File: {file_name}
+Data (first 20 rows):
+{json.dumps(rows_sample, ensure_ascii=False, indent=2)}
+
+Analyze and return ONLY ONE of these types:
+
+TYPE A - "daily_report" if:
+- Single enterprise/department report
+- Contains "Итого" columns for totals
+- Has operations and crops in rows
+- Typical filename pattern: "Таблица_для_дневного_отчета"
+
+TYPE B - "operational_report" if:
+- Multiple enterprises in rows
+- Operations spread across columns
+- Has sections like "Площадь, га"
+- Typical filename pattern: "Оперативная_отчетность"
+
+Return JSON:
+{{
+  "table_type": "daily_report" or "operational_report"
+}}
+"""
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert at analyzing Excel table structures. Always respond with valid JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"}
+            )
+            
+            content = response.choices[0].message.content
+            result = json.loads(content)
+            table_type = result.get("table_type", "daily_report")
+            
+            logger.info(f"Определен тип таблицы {file_name}: {table_type}")
+            return table_type
+            
+        except Exception as e:
+            logger.error(f"Ошибка при определении типа таблицы {file_name}: {e}")
+            return "daily_report"
+    
     def extract_table_data(
         self, 
         sheet_data: Dict[str, Any], 
@@ -65,7 +128,7 @@ class LLMClient:
         
         rows_sample = rows_data[:50] if len(rows_data) > 50 else rows_data
         
-        prompt = f"""Extract structured agricultural data from this Excel sheet.
+        prompt = f"""Extract agricultural data from DAILY REPORT table.
 
 File: {file_name}
 Sheet: {sheet_name}
@@ -73,35 +136,52 @@ Sheet: {sheet_name}
 Data (first 50 rows):
 {json.dumps(rows_sample, ensure_ascii=False, indent=2)}
 
-Extract ALL records and return JSON with this EXACT structure:
+This is a DAILY REPORT with single enterprise. Extract data as follows:
+
+1. Find date in header (usually in first 3 rows, cell might contain date) or extract from filename pattern _DDMM.xlsx
+2. Find department/enterprise name:
+   - Look in header area (first 3-4 rows)
+   - It can be any company or department name
+   - Examples: "ПУ Север", "Агрохолдинг Рассвет", "ООО Колос", etc.
+3. Find header row with column names (look for "Итого", "Остаток" columns)
+4. Identify columns:
+   - "Итого" columns (there are usually TWO adjacent "Итого" columns)
+   - First "Итого" = work per day (объем работ за день)
+   - Second "Итого" = work from start (объем работ с начала)
+   - "Остаток" = remaining work (оставшийся объем)
+5. For EACH data row (after header row):
+   - operation_name = first column value (название операции)
+   - crop_name = second column value (название культуры)
+   - work_per_day = value from first "Итого" column
+   - work_from_start = value from second "Итого" column
+   - remaining_work = value from "Остаток" column
+   - Calculate completion_percent = work_from_start / (work_from_start + remaining_work) if denominator > 0, else 0
+
+RETURN JSON:
 {{
   "records": [
     {{
-      "operation_date": "YYYY-MM-DD format or null",
-      "department_name": "Department/Enterprise name or null",
-      "operation_name": "Operation name or null",
-      "crop_name": "Crop name or null",
-      "work_per_day": numeric value or 0,
-      "work_from_start": numeric value or 0,
-      "remaining_work": numeric value or 0,
-      "completion_percent": numeric value between 0 and 1 or 0
+      "operation_date": "YYYY-MM-DD",
+      "department_name": "string",
+      "operation_name": "string",
+      "crop_name": "string",
+      "work_per_day": number,
+      "work_from_start": number,
+      "remaining_work": number,
+      "completion_percent": number (0 to 1)
     }}
   ]
 }}
 
-Instructions:
-1. Find the date in the table (usually in first few rows, cell like "Дата: DD.MM.YYYY") or extract from filename pattern like "_DDMM.xlsx"
-2. Find department/enterprise name (usually starts with "ПУ" or company name)
-3. Identify operation types (Культивация, Посев, Боронование, etc.) and crop names (Пшеница, Ячмень, etc.)
-4. Extract numeric values for daily work, total work, and remaining work
-5. Calculate completion_percent as: work_from_start / (work_from_start + remaining_work) if denominaator > 0, else 0
-6. Skip header rows, summary rows (like "Итого"), and empty rows
-7. Return ALL data rows from the entire table, not just samples
-8. If a field cannot be determined, use null for strings or 0 for numbers
-9. Convert all dates to YYYY-MM-DD format
-10. Ensure numeric fields are numbers (not strings)
-11. Handle both daily report format and operational report format
-12. For operational reports with multiple operations in columns, create separate records for each operation
+CRITICAL RULES:
+1. Skip header rows (first 5 rows typically)
+2. Skip summary rows starting with "Итого по..."
+3. Skip empty rows
+4. All numeric values must be numbers, not strings
+5. Dates in YYYY-MM-DD format
+6. If field unknown, use null for strings or 0 for numbers
+7. Return ALL data rows from entire table
+8. Extract work values ONLY from "Итого" columns (суммарные значения по всем агрегатам)
 """
         
         return prompt
