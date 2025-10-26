@@ -119,6 +119,18 @@ function displayUploadedFiles(files) {
     document.getElementById('uploadArea').style.display = 'none';
 }
 
+function toggleScheduleForm() {
+    const checkbox = document.getElementById('enableEmailSchedule');
+    const scheduleForm = document.getElementById('scheduleFormContainer');
+    
+    if (checkbox.checked) {
+        scheduleForm.style.display = 'block';
+        setDefaultScheduleTime();
+    } else {
+        scheduleForm.style.display = 'none';
+    }
+}
+
 function clearFiles() {
     currentJobId = null;
     uploadedFiles = [];
@@ -128,6 +140,8 @@ function clearFiles() {
     document.getElementById('fileInput').value = '';
     document.getElementById('scheduledTime').value = '';
     document.getElementById('recipientEmail').value = '';
+    document.getElementById('enableEmailSchedule').checked = false;
+    document.getElementById('scheduleFormContainer').style.display = 'none';
     
     const processBtn = document.getElementById('processBtn');
     processBtn.disabled = false;
@@ -139,17 +153,25 @@ async function processFiles() {
         return;
     }
     
+    const enableEmail = document.getElementById('enableEmailSchedule').checked;
     const scheduledTime = document.getElementById('scheduledTime').value;
     const recipientEmail = document.getElementById('recipientEmail').value;
     
-    if (scheduledTime && recipientEmail && !validateEmail(recipientEmail)) {
-        alert('Пожалуйста, введите корректный email адрес');
-        return;
-    }
-    
-    if (scheduledTime && new Date(scheduledTime) <= new Date()) {
-        alert('Время отправки должно быть в будущем');
-        return;
+    if (enableEmail) {
+        if (!scheduledTime || !recipientEmail) {
+            alert('Заполните время отправки и email получателя');
+            return;
+        }
+        
+        if (!validateEmail(recipientEmail)) {
+            alert('Пожалуйста, введите корректный email адрес');
+            return;
+        }
+        
+        if (new Date(scheduledTime) <= new Date()) {
+            alert('Время отправки должно быть в будущем');
+            return;
+        }
     }
     
     const processBtn = document.getElementById('processBtn');
@@ -158,7 +180,6 @@ async function processFiles() {
     try {
         showProcessingStatus('Обработка файлов...');
         
-        // Обрабатываем файлы
         const response = await fetch(`/api/process/${currentJobId}`, {
             method: 'POST'
         });
@@ -171,15 +192,9 @@ async function processFiles() {
         
         await waitForCompletion(currentJobId);
         
-        if (scheduledTime && recipientEmail) {
+        if (enableEmail && scheduledTime && recipientEmail) {
             try {
                 const localDate = new Date(scheduledTime);
-                
-                console.log('Планирование отправки:', {
-                    scheduled_time: localDate.toISOString(),
-                    recipient_email: recipientEmail
-                });
-                
                 const scheduleResponse = await fetch(`/api/jobs/${currentJobId}/schedule`, {
                     method: 'POST',
                     headers: {
@@ -195,7 +210,6 @@ async function processFiles() {
                     alert('Обработка завершена! Файл будет отправлен в указанное время.');
                 } else {
                     const errorData = await scheduleResponse.json();
-                    console.error('Ошибка сервера:', errorData);
                     throw new Error(errorData.detail || 'Ошибка при планировании отправки');
                 }
             } catch (scheduleError) {

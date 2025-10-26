@@ -31,8 +31,16 @@
                     <h3>Загруженные файлы:</h3>
                     <ul id="filesListItems"></ul>
                     
+                    <!-- Чекбокс для включения отправки по email -->
+                    <div class="email-option">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="enableEmailSchedule" onchange="toggleScheduleForm()">
+                            <span>📧 Запланировать автоматическую отправку по email</span>
+                        </label>
+                    </div>
+                    
                     <!-- Форма планирования отправки -->
-                    <div class="schedule-form">
+                    <div id="scheduleFormContainer" class="schedule-form" style="display: none;">
                         <h4>Настройки отправки</h4>
                         <div class="form-group">
                             <label for="scheduledTime">Время отправки:</label>
