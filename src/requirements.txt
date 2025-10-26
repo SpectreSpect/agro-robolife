@@ -13,3 +13,5 @@ python-dotenv>=1.0.0
 httpx>=0.25.0
 requests>=2.28.0
 openai>=1.0.0
+apscheduler>=3.10.0
+pydantic[email]>=2.3.0

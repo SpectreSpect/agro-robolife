@@ -408,3 +408,196 @@ footer {
     animation: fadeIn 0.5s ease;
 }
 
+/* Schedule Form */
+.schedule-form {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+    box-shadow: var(--shadow);
+}
+
+.schedule-form h4 {
+    color: var(--dark-color);
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--dark-color);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 10px 15px;
+    border: 2px solid var(--light-color);
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.1);
+}
+
+.schedule-note {
+    background: #e3f2fd;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: #1976d2;
+    margin-top: 10px;
+}
+
+/* Schedule Info */
+.schedule-info {
+    background: #f0f8ff;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+    border-left: 4px solid var(--info-color);
+}
+
+.schedule-info p {
+    margin: 5px 0;
+    font-size: 0.95rem;
+}
+
+.timer .countdown {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+/* Status badges */
+.status-sent {
+    background: #d4edda;
+    color: #155724;
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-content {
+    background-color: white;
+    margin: auto;
+    border-radius: var(--border-radius);
+    width: 90%;
+    max-width: 500px;
+    box-shadow: var(--shadow-lg);
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-header {
+    padding: 20px 25px;
+    border-bottom: 2px solid var(--light-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: var(--dark-color);
+    font-size: 1.3rem;
+}
+
+.modal-close {
+    color: #aaa;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+
+.modal-close:hover,
+.modal-close:focus {
+    color: var(--danger-color);
+}
+
+.modal-body {
+    padding: 25px;
+}
+
+.modal-body p {
+    margin: 0;
+    line-height: 1.6;
+    color: #555;
+}
+
+.modal-footer {
+    padding: 15px 25px;
+    border-top: 2px solid var(--light-color);
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* Button variations */
+.btn-warning {
+    background: var(--warning-color);
+    color: white;
+}
+
+.btn-warning:hover {
+    background: #e67e22;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .modal-content {
+        width: 95%;
+        margin: 20px auto;
+    }
+
+    .schedule-form {
+        padding: 15px;
+    }
+
+    .form-control {
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+
+    .modal-footer {
+        flex-direction: column;
+    }
+
+    .modal-footer .btn {
+        width: 100%;
+    }
+}
+

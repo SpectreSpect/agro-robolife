@@ -4,19 +4,21 @@ import shutil
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import List
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from typing import List, Optional
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, EmailStr, ValidationError
 import uvicorn
 
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.web.database import get_db, init_db
 from src.web.models import ProcessingJob
+from src.web.scheduler import JobScheduler
 from src.data_processing import DataReader, DataParser, TableBuilder
 
 logging.basicConfig(
@@ -41,11 +43,33 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+# Глобальный планировщик
+scheduler = JobScheduler(OUTPUT_DIR)
+
+
+# Pydantic модели для запросов
+class ScheduleRequest(BaseModel):
+    scheduled_time: str  # ISO format
+    recipient_email: EmailStr
+
+
+class UpdateScheduleRequest(BaseModel):
+    scheduled_time: Optional[str] = None
+    recipient_email: Optional[EmailStr] = None
+
 
 @app.on_event("startup")
 async def startup_event():
     init_db()
     logger.info("База данных инициализирована")
+    scheduler.start()
+    logger.info("Планировщик задач запущен")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.shutdown()
+    logger.info("Планировщик задач остановлен")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -183,7 +207,7 @@ async def download_file(job_id: int, db: Session = Depends(get_db)):
         if not job:
             raise HTTPException(status_code=404, detail="Задача не найдена")
 
-        if job.status != "completed":
+        if job.status not in ["completed", "sent"]:
             raise HTTPException(status_code=400, detail="Обработка не завершена")
 
         output_path = OUTPUT_DIR / job.output_file
@@ -228,6 +252,9 @@ async def delete_job(job_id: int, db: Session = Depends(get_db)):
         if not job:
             raise HTTPException(status_code=404, detail="Задача не найдена")
 
+        # Отменяем запланированную отправку
+        scheduler.cancel_job(job_id)
+
         job_dir = UPLOAD_DIR / str(job_id)
         if job_dir.exists():
             shutil.rmtree(job_dir)
@@ -261,6 +288,204 @@ async def get_job(job_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Ошибка при получении задачи: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/jobs/{job_id}/schedule")
+async def schedule_job(
+    job_id: int,
+    request: ScheduleRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        logger.info(f"Получен запрос на планирование задачи {job_id}")
+        logger.info(f"Данные запроса: time={request.scheduled_time}, email={request.recipient_email}")
+        
+        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+        
+        logger.info(f"Задача найдена, статус: {job.status}")
+        
+        if job.status != "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Задача должна быть завершена перед планированием отправки"
+            )
+        
+        scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
+        logger.info(f"Парсинг времени: {scheduled_time_str}")
+        scheduled_time = datetime.fromisoformat(scheduled_time_str)
+        
+        if scheduled_time.tzinfo:
+            scheduled_time = scheduled_time.replace(tzinfo=None)
+        
+        logger.info(f"Время после обработки: {scheduled_time}")
+        logger.info(f"Текущее время: {datetime.now()}")
+        
+        if scheduled_time <= datetime.now():
+            logger.warning(f"Время в прошлом: {scheduled_time} <= {datetime.now()}")
+            raise HTTPException(
+                status_code=400,
+                detail="Время отправки должно быть в будущем"
+            )
+        
+        logger.info("Обновление задачи в БД...")
+        job.scheduled_time = scheduled_time
+        job.recipient_email = request.recipient_email
+        job.is_cancelled = False
+        db.commit()
+        logger.info("Задача обновлена в БД")
+        
+        logger.info("Добавление задачи в планировщик...")
+        scheduler.schedule_job(job_id, scheduled_time)
+        logger.info("Задача добавлена в планировщик")
+        
+        logger.info(
+            f"✅ Задача {job_id} успешно запланирована на {scheduled_time} "
+            f"для {request.recipient_email}"
+        )
+        
+        return job.to_dict()
+        
+    except HTTPException as he:
+        logger.error(f"HTTP ошибка при планировании задачи {job_id}: {he.status_code} - {he.detail}")
+        raise
+    except ValidationError as ve:
+        logger.error(f"Ошибка валидации данных для задачи {job_id}: {ve}")
+        raise HTTPException(status_code=422, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Ошибка при планировании задачи {job_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/jobs/{job_id}/schedule")
+async def update_schedule(
+    job_id: int,
+    request: UpdateScheduleRequest,
+    db: Session = Depends(get_db)
+):
+    """Обновляет расписание или email для задачи"""
+    try:
+        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+        
+        if job.status == "sent":
+            raise HTTPException(
+                status_code=400,
+                detail="Задача уже отправлена, изменение невозможно"
+            )
+        
+        updated = False
+        
+        if request.scheduled_time:
+            scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
+            scheduled_time = datetime.fromisoformat(scheduled_time_str)
+            
+            if scheduled_time.tzinfo:
+                scheduled_time = scheduled_time.replace(tzinfo=None)
+            
+            if scheduled_time <= datetime.now():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Время отправки должно быть в будущем"
+                )
+            
+            job.scheduled_time = scheduled_time
+            job.is_cancelled = False
+            
+            scheduler.schedule_job(job_id, scheduled_time)
+            updated = True
+            logger.info(f"Время отправки задачи {job_id} изменено на {scheduled_time}")
+        
+        # Обновляем email если указан
+        if request.recipient_email:
+            job.recipient_email = request.recipient_email
+            updated = True
+            logger.info(f"Email для задачи {job_id} изменен на {request.recipient_email}")
+        
+        if updated:
+            db.commit()
+        
+        return job.to_dict()
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении задачи {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/jobs/{job_id}/send-now")
+async def send_now(job_id: int, db: Session = Depends(get_db)):
+    try:
+        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+        
+        if job.status == "sent":
+            raise HTTPException(status_code=400, detail="Задача уже отправлена")
+        
+        if job.status != "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Задача должна быть завершена перед отправкой"
+            )
+        
+        if not job.recipient_email:
+            raise HTTPException(
+                status_code=400,
+                detail="Email получателя не указан"
+            )
+        
+        success = await scheduler.send_immediately(job_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="Ошибка при отправке. Проверьте настройки email"
+            )
+        
+        db.refresh(job)
+        
+        logger.info(f"Задача {job_id} отправлена немедленно на {job.recipient_email}")
+        
+        return job.to_dict()
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при немедленной отправке задачи {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+async def cancel_schedule(job_id: int, db: Session = Depends(get_db)):
+    try:
+        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+        
+        if job.status == "sent":
+            raise HTTPException(status_code=400, detail="Задача уже отправлена")
+        
+        scheduler.cancel_job(job_id)
+        
+        job.is_cancelled = True
+        job.scheduled_time = None
+        db.commit()
+        
+        logger.info(f"Отправка задачи {job_id} отменена")
+        
+        return job.to_dict()
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при отмене задачи {job_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

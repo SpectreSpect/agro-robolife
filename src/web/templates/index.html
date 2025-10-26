@@ -30,6 +30,23 @@
                 <div id="filesList" class="files-list" style="display: none;">
                     <h3>Загруженные файлы:</h3>
                     <ul id="filesListItems"></ul>
+                    
+                    <!-- Форма планирования отправки -->
+                    <div class="schedule-form">
+                        <h4>Настройки отправки</h4>
+                        <div class="form-group">
+                            <label for="scheduledTime">Время отправки:</label>
+                            <input type="datetime-local" id="scheduledTime" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="recipientEmail">Email получателя:</label>
+                            <input type="email" id="recipientEmail" class="form-control" placeholder="example@mail.com">
+                        </div>
+                        <div class="schedule-note">
+                            💡 После обработки файл будет автоматически отправлен в указанное время
+                        </div>
+                    </div>
+                    
                     <div class="upload-actions">
                         <button class="btn btn-success" id="processBtn" onclick="processFiles()">
                             ✓ Обработать файлы
@@ -62,6 +79,47 @@
         <footer>
             <p>Система обработки сельскохозяйственных данных</p>
         </footer>
+    </div>
+
+    <!-- Модальное окно подтверждения -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Подтверждение</h3>
+                <span class="modal-close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="modalMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+                <button class="btn btn-primary" id="modalConfirmBtn">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования расписания -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Редактирование расписания</h3>
+                <span class="modal-close" onclick="closeEditModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="editScheduledTime">Время отправки:</label>
+                    <input type="datetime-local" id="editScheduledTime" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="editRecipientEmail">Email получателя:</label>
+                    <input type="email" id="editRecipientEmail" class="form-control">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeEditModal()">Отмена</button>
+                <button class="btn btn-primary" id="editModalSaveBtn">Сохранить</button>
+            </div>
+        </div>
     </div>
 
     <script src="/static/script.js"></script>
