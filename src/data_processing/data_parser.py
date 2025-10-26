@@ -4,17 +4,10 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import logging
 import re
-import os
-from dotenv import load_dotenv
 
 from .llm_client import LLMClient, ExcelToLLMConverter
 
 logger = logging.getLogger(__name__)
-
-load_dotenv()
-
-LLM_API_KEY = os.getenv("LLM_API_KEY")
-LLM_BASE_URL = os.getenv("LLM_BASE_URL")
 
 def extract_date_from_filename(filename: str) -> Optional[datetime]:
     
@@ -164,7 +157,7 @@ class DailyReportLLMParser:
     
     def __init__(self, file_path: Path):
         self.file_path = file_path
-        self.llm_client = LLMClient(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+        self.llm_client = LLMClient()
         self.data = []
     
     def parse(self) -> List[Dict[str, Any]]:
@@ -274,7 +267,7 @@ class HybridParser:
     
     def __init__(self, file_path: Path):
         self.file_path = file_path
-        self.llm_client = LLMClient(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+        self.llm_client = LLMClient()
     
     def parse(self) -> List[Dict[str, Any]]:
         

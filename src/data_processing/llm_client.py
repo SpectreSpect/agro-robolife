@@ -2,18 +2,30 @@ import json
 import logging
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
+import os
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
+load_dotenv()
+
+LLM_API_KEY = os.getenv("LLM_API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://gptunnel.ru/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+#LLM_MAX_TOKENS = float(os.getenv("LLM_MAX_TOKENS", "16000"))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
+#LLM_MAX_RETRIES = float(os.getenv("LLM_MAX_RETRIES", "3"))
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "60.0"))
+#LLM_ENABLE_CACHE = bool(os.getenv("LLM_ENABLE_CACHE", "True"))
 
 class LLMClient:
     
-    def __init__(self, api_key: str, base_url: str = "https://gptunnel.ru/v1"):
+    def __init__(self):
         self.client = OpenAI(
-            api_key=api_key,
-            base_url=base_url
+            api_key=LLM_API_KEY,
+            base_url=LLM_BASE_URL
         )
-        self.model = "gpt-4o-mini"
+        self.model = LLM_MODEL
     
     def determine_table_type(
         self, 
@@ -99,7 +111,10 @@ Return JSON:
                         "content": prompt
                     }
                 ],
-                temperature=0.1,
+                temperature=LLM_TEMPERATURE,
+                timeout=LLM_TIMEOUT,
+                #max_tokens=LLM_MAX_TOKENS,
+                #enable_cache=LLM_ENABLE_CACHE,
                 response_format={"type": "json_object"}
             )
             
