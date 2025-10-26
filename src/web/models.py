@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from .database import Base
 
 
@@ -25,10 +25,18 @@ class ProcessingJob(Base):
     is_cancelled = Column(Boolean, default=False)  # Флаг отмены
 
     def to_dict(self):
-
+        server_offset_seconds = datetime.now().astimezone().utcoffset().total_seconds()
+        server_offset_minutes = int(server_offset_seconds / 60)
+        
+        def local_to_utc_iso(dt):
+            if dt is None:
+                return None
+            utc_dt = dt + timedelta(minutes=-server_offset_minutes)
+            return utc_dt.isoformat() + 'Z'
+        
         return {
             "id": self.id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": local_to_utc_iso(self.created_at),
             "status": self.status,
             "input_files": self.input_files,
             "output_file": self.output_file,
@@ -37,8 +45,8 @@ class ProcessingJob(Base):
             "operations_count": self.operations_count,
             "crops_count": self.crops_count,
             "error_message": self.error_message,
-            "scheduled_time": self.scheduled_time.isoformat() if self.scheduled_time else None,
+            "scheduled_time": local_to_utc_iso(self.scheduled_time),
             "recipient_email": self.recipient_email,
-            "sent_at": self.sent_at.isoformat() if self.sent_at else None,
+            "sent_at": local_to_utc_iso(self.sent_at),
             "is_cancelled": self.is_cancelled,
         }

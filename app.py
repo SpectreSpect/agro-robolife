@@ -3,7 +3,7 @@ import sys
 import shutil
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Form
 from fastapi.responses import HTMLResponse, FileResponse
@@ -317,25 +317,33 @@ async def schedule_job(
                 detail="Задача должна быть завершена перед планированием отправки"
             )
         
-        scheduled_time = datetime.fromisoformat(request.scheduled_time)
+        user_time = datetime.fromisoformat(request.scheduled_time)
+        timezone_offset_minutes = request.timezone_offset
         
-        current_time = datetime.now()
+        utc_time = user_time + timedelta(minutes=timezone_offset_minutes)
         
-        if scheduled_time <= current_time:
+        server_time = datetime.now()
+        server_offset_seconds = datetime.now().astimezone().utcoffset().total_seconds()
+        server_offset_minutes = int(server_offset_seconds / 60)
+        
+        scheduled_time_local = utc_time + timedelta(minutes=server_offset_minutes)
+        
+        if utc_time <= datetime.utcnow():
             raise HTTPException(
                 status_code=400,
                 detail="Время отправки должно быть в будущем"
             )
         
-        job.scheduled_time = scheduled_time
+        job.scheduled_time = scheduled_time_local
         job.recipient_email = request.recipient_email
         job.is_cancelled = False
         db.commit()
         
-        scheduler.schedule_job(job_id, scheduled_time)
+        scheduler.schedule_job(job_id, scheduled_time_local)
         
         logger.info(
-            f"Задача {job_id} запланирована на {scheduled_time} "
+            f"Задача {job_id} запланирована на {scheduled_time_local} (серверное время) "
+            f"что соответствует {user_time} (время пользователя UTC{-timezone_offset_minutes//60:+d}) "
             f"для {request.recipient_email}"
         )
         
@@ -367,23 +375,29 @@ async def update_schedule(
         
         updated = False
         
-        if request.scheduled_time:
-            scheduled_time = datetime.fromisoformat(request.scheduled_time)
+        if request.scheduled_time and request.timezone_offset is not None:
+            user_time = datetime.fromisoformat(request.scheduled_time)
+            timezone_offset_minutes = request.timezone_offset
             
-            current_time = datetime.now()
+            utc_time = user_time + timedelta(minutes=timezone_offset_minutes)
             
-            if scheduled_time <= current_time:
+            server_offset_seconds = datetime.now().astimezone().utcoffset().total_seconds()
+            server_offset_minutes = int(server_offset_seconds / 60)
+            
+            scheduled_time_local = utc_time + timedelta(minutes=server_offset_minutes)
+            
+            if utc_time <= datetime.utcnow():
                 raise HTTPException(
                     status_code=400,
                     detail="Время отправки должно быть в будущем"
                 )
             
-            job.scheduled_time = scheduled_time
+            job.scheduled_time = scheduled_time_local
             job.is_cancelled = False
             
-            scheduler.schedule_job(job_id, scheduled_time)
+            scheduler.schedule_job(job_id, scheduled_time_local)
             updated = True
-            logger.info(f"Время отправки задачи {job_id} изменено на {scheduled_time}")
+            logger.info(f"Время отправки задачи {job_id} изменено на {scheduled_time_local}")
         
         if request.recipient_email:
             job.recipient_email = request.recipient_email
