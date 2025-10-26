@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, EmailStr, ValidationError
+from pydantic import BaseModel, EmailStr
 import uvicorn
 
 sys.path.append(str(Path(__file__).parent.parent))
@@ -297,15 +297,20 @@ async def schedule_job(
     request: ScheduleRequest,
     db: Session = Depends(get_db)
 ):
+    """
+    Планирует отправку задачи на указанное время.
+    
+    Время обрабатывается следующим образом:
+    1. JavaScript отправляет ISO время с timezone пользователя
+    2. Сервер конвертирует в локальное время через astimezone()
+    3. Сохраняет в БД без timezone
+    4. Планировщик запускает в локальное время сервера
+    5. Таймер в браузере показывает оставшееся время в часовом поясе пользователя
+    """
     try:
-        logger.info(f"Получен запрос на планирование задачи {job_id}")
-        logger.info(f"Данные запроса: time={request.scheduled_time}, email={request.recipient_email}")
-        
         job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
         if not job:
             raise HTTPException(status_code=404, detail="Задача не найдена")
-        
-        logger.info(f"Задача найдена, статус: {job.status}")
         
         if job.status != "completed":
             raise HTTPException(
@@ -314,50 +319,39 @@ async def schedule_job(
             )
         
         scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
-        logger.info(f"Парсинг времени: {scheduled_time_str}")
-        scheduled_time = datetime.fromisoformat(scheduled_time_str)
+        scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
         
-        if scheduled_time.tzinfo:
-            scheduled_time = scheduled_time.replace(tzinfo=None)
+        if scheduled_time_utc.tzinfo:
+            scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
+        else:
+            scheduled_time = scheduled_time_utc
         
-        logger.info(f"Время после обработки: {scheduled_time}")
-        logger.info(f"Текущее время: {datetime.now()}")
+        current_time = datetime.now()
         
-        if scheduled_time <= datetime.now():
-            logger.warning(f"Время в прошлом: {scheduled_time} <= {datetime.now()}")
+        if scheduled_time <= current_time:
             raise HTTPException(
                 status_code=400,
                 detail="Время отправки должно быть в будущем"
             )
         
-        logger.info("Обновление задачи в БД...")
         job.scheduled_time = scheduled_time
         job.recipient_email = request.recipient_email
         job.is_cancelled = False
         db.commit()
-        logger.info("Задача обновлена в БД")
         
-        logger.info("Добавление задачи в планировщик...")
         scheduler.schedule_job(job_id, scheduled_time)
-        logger.info("Задача добавлена в планировщик")
         
         logger.info(
-            f"✅ Задача {job_id} успешно запланирована на {scheduled_time} "
+            f"Задача {job_id} запланирована на {scheduled_time} (локальное время) "
             f"для {request.recipient_email}"
         )
         
         return job.to_dict()
         
-    except HTTPException as he:
-        logger.error(f"HTTP ошибка при планировании задачи {job_id}: {he.status_code} - {he.detail}")
+    except HTTPException:
         raise
-    except ValidationError as ve:
-        logger.error(f"Ошибка валидации данных для задачи {job_id}: {ve}")
-        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         logger.error(f"Ошибка при планировании задачи {job_id}: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -383,12 +377,16 @@ async def update_schedule(
         
         if request.scheduled_time:
             scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
-            scheduled_time = datetime.fromisoformat(scheduled_time_str)
+            scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
             
-            if scheduled_time.tzinfo:
-                scheduled_time = scheduled_time.replace(tzinfo=None)
+            if scheduled_time_utc.tzinfo:
+                scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
+            else:
+                scheduled_time = scheduled_time_utc
             
-            if scheduled_time <= datetime.now():
+            current_time = datetime.now()
+            
+            if scheduled_time <= current_time:
                 raise HTTPException(
                     status_code=400,
                     detail="Время отправки должно быть в будущем"
