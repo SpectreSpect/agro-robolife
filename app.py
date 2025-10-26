@@ -16,6 +16,13 @@ import uvicorn
 
 sys.path.append(str(Path(__file__).parent.parent))
 
+try:
+    import certifi
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+except ImportError:
+    pass
+
 from src.web.database import get_db, init_db
 from src.web.models import ProcessingJob
 from src.web.scheduler import JobScheduler

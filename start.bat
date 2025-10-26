@@ -12,6 +12,13 @@ REM Проверка активации виртуального окружен�
 if exist .venv\Scripts\activate.bat (
     echo ✓ Активация виртуального окружения...
     call .venv\Scripts\activate.bat
+    
+    echo ✓ Проверка certifi для SSL...
+    python -c "import certifi" 2>nul
+    if errorlevel 1 (
+        echo Установка certifi...
+        pip install certifi --quiet
+    )
 ) else (
     echo ⚠ Виртуальное окружение не найдено!
     echo.
