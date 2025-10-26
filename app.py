@@ -3,7 +3,7 @@ import sys
 import shutil
 import logging
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Form
 from fastapi.responses import HTMLResponse, FileResponse
@@ -56,12 +56,14 @@ scheduler = JobScheduler(OUTPUT_DIR)
 
 # Pydantic модели для запросов
 class ScheduleRequest(BaseModel):
-    scheduled_time: str  # ISO format
+    scheduled_time: str
+    timezone_offset: int
     recipient_email: EmailStr
 
 
 class UpdateScheduleRequest(BaseModel):
     scheduled_time: Optional[str] = None
+    timezone_offset: Optional[int] = None
     recipient_email: Optional[EmailStr] = None
 
 
@@ -304,16 +306,6 @@ async def schedule_job(
     request: ScheduleRequest,
     db: Session = Depends(get_db)
 ):
-    """
-    Планирует отправку задачи на указанное время.
-    
-    Время обрабатывается в UTC:
-    1. JavaScript отправляет ISO время с timezone пользователя
-    2. Сервер конвертирует в UTC через astimezone(timezone.utc)
-    3. Сохраняет в БД как UTC без timezone
-    4. Планировщик работает в UTC
-    5. Таймер в браузере показывает время в часовом поясе пользователя
-    """
     try:
         job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
         if not job:
@@ -325,21 +317,11 @@ async def schedule_job(
                 detail="Задача должна быть завершена перед планированием отправки"
             )
         
-        scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
-        scheduled_time_with_tz = datetime.fromisoformat(scheduled_time_str)
+        scheduled_time = datetime.fromisoformat(request.scheduled_time)
         
-        if not scheduled_time_with_tz.tzinfo:
-            raise HTTPException(
-                status_code=400,
-                detail="Время должно содержать информацию о часовом поясе"
-            )
+        current_time = datetime.now()
         
-        scheduled_time_utc = scheduled_time_with_tz.astimezone(timezone.utc)
-        scheduled_time = scheduled_time_utc.replace(tzinfo=None)
-        
-        current_time_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-        
-        if scheduled_time <= current_time_utc:
+        if scheduled_time <= current_time:
             raise HTTPException(
                 status_code=400,
                 detail="Время отправки должно быть в будущем"
@@ -353,7 +335,7 @@ async def schedule_job(
         scheduler.schedule_job(job_id, scheduled_time)
         
         logger.info(
-            f"Задача {job_id} запланирована на {scheduled_time} (локальное время) "
+            f"Задача {job_id} запланирована на {scheduled_time} "
             f"для {request.recipient_email}"
         )
         
@@ -372,7 +354,6 @@ async def update_schedule(
     request: UpdateScheduleRequest,
     db: Session = Depends(get_db)
 ):
-    """Обновляет расписание или email для задачи"""
     try:
         job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
         if not job:
@@ -387,21 +368,11 @@ async def update_schedule(
         updated = False
         
         if request.scheduled_time:
-            scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
-            scheduled_time_with_tz = datetime.fromisoformat(scheduled_time_str)
+            scheduled_time = datetime.fromisoformat(request.scheduled_time)
             
-            if not scheduled_time_with_tz.tzinfo:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Время должно содержать информацию о часовом поясе"
-                )
+            current_time = datetime.now()
             
-            scheduled_time_utc = scheduled_time_with_tz.astimezone(timezone.utc)
-            scheduled_time = scheduled_time_utc.replace(tzinfo=None)
-            
-            current_time_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-            
-            if scheduled_time <= current_time_utc:
+            if scheduled_time <= current_time:
                 raise HTTPException(
                     status_code=400,
                     detail="Время отправки должно быть в будущем"
@@ -414,7 +385,6 @@ async def update_schedule(
             updated = True
             logger.info(f"Время отправки задачи {job_id} изменено на {scheduled_time}")
         
-        # Обновляем email если указан
         if request.recipient_email:
             job.recipient_email = request.recipient_email
             updated = True

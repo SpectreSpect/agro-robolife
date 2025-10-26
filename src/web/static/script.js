@@ -195,13 +195,15 @@ async function processFiles() {
         if (enableEmail && scheduledTime && recipientEmail) {
             try {
                 const localDate = new Date(scheduledTime);
+                const timezoneOffset = localDate.getTimezoneOffset();
                 const scheduleResponse = await fetch(`/api/jobs/${currentJobId}/schedule`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        scheduled_time: localDate.toISOString(),
+                        scheduled_time: scheduledTime,
+                        timezone_offset: timezoneOffset,
                         recipient_email: recipientEmail
                     })
                 });
@@ -469,13 +471,15 @@ function openScheduleModal(jobId) {
         
         try {
             const localDate = new Date(scheduledTime);
+            const timezoneOffset = localDate.getTimezoneOffset();
             const response = await fetch(`/api/jobs/${jobId}/schedule`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    scheduled_time: localDate.toISOString(),
+                    scheduled_time: scheduledTime,
+                    timezone_offset: timezoneOffset,
                     recipient_email: email
                 })
             });
@@ -535,13 +539,15 @@ function openEditModal(jobId, currentScheduledTime, currentEmail) {
         
         try {
             const localDate = new Date(newTime);
+            const timezoneOffset = localDate.getTimezoneOffset();
             const response = await fetch(`/api/jobs/${jobId}/schedule`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    scheduled_time: localDate.toISOString(),
+                    scheduled_time: newTime,
+                    timezone_offset: timezoneOffset,
                     recipient_email: newEmail
                 })
             });

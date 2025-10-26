@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -46,8 +46,7 @@ class JobScheduler:
             ).all()
             
             for job in jobs:
-                current_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-                if job.scheduled_time > current_utc:
+                if job.scheduled_time > datetime.now():
                     self.schedule_job(job.id, job.scheduled_time)
                     logger.info(
                         f"Восстановлена задача {job.id} "
@@ -158,7 +157,7 @@ class JobScheduler:
             
             if success:
                 job.status = "sent"
-                job.sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                job.sent_at = datetime.now()
                 job.error_message = None
                 logger.info(f"Задача {job_id} успешно отправлена")
             else:
