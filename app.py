@@ -3,7 +3,7 @@ import sys
 import shutil
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Form
 from fastapi.responses import HTMLResponse, FileResponse
@@ -307,12 +307,12 @@ async def schedule_job(
     """
     Планирует отправку задачи на указанное время.
     
-    Время обрабатывается следующим образом:
+    Время обрабатывается в UTC:
     1. JavaScript отправляет ISO время с timezone пользователя
-    2. Сервер конвертирует в локальное время через astimezone()
-    3. Сохраняет в БД без timezone
-    4. Планировщик запускает в локальное время сервера
-    5. Таймер в браузере показывает оставшееся время в часовом поясе пользователя
+    2. Сервер конвертирует в UTC через astimezone(timezone.utc)
+    3. Сохраняет в БД как UTC без timezone
+    4. Планировщик работает в UTC
+    5. Таймер в браузере показывает время в часовом поясе пользователя
     """
     try:
         job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
@@ -326,16 +326,20 @@ async def schedule_job(
             )
         
         scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
-        scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
+        scheduled_time_with_tz = datetime.fromisoformat(scheduled_time_str)
         
-        if scheduled_time_utc.tzinfo:
-            scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
-        else:
-            scheduled_time = scheduled_time_utc
+        if not scheduled_time_with_tz.tzinfo:
+            raise HTTPException(
+                status_code=400,
+                detail="Время должно содержать информацию о часовом поясе"
+            )
         
-        current_time = datetime.now()
+        scheduled_time_utc = scheduled_time_with_tz.astimezone(timezone.utc)
+        scheduled_time = scheduled_time_utc.replace(tzinfo=None)
         
-        if scheduled_time <= current_time:
+        current_time_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        
+        if scheduled_time <= current_time_utc:
             raise HTTPException(
                 status_code=400,
                 detail="Время отправки должно быть в будущем"
@@ -384,16 +388,20 @@ async def update_schedule(
         
         if request.scheduled_time:
             scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
-            scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
+            scheduled_time_with_tz = datetime.fromisoformat(scheduled_time_str)
             
-            if scheduled_time_utc.tzinfo:
-                scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
-            else:
-                scheduled_time = scheduled_time_utc
+            if not scheduled_time_with_tz.tzinfo:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Время должно содержать информацию о часовом поясе"
+                )
             
-            current_time = datetime.now()
+            scheduled_time_utc = scheduled_time_with_tz.astimezone(timezone.utc)
+            scheduled_time = scheduled_time_utc.replace(tzinfo=None)
             
-            if scheduled_time <= current_time:
+            current_time_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            
+            if scheduled_time <= current_time_utc:
                 raise HTTPException(
                     status_code=400,
                     detail="Время отправки должно быть в будущем"

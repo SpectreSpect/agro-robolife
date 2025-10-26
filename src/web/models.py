@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean
-from datetime import datetime
+from datetime import datetime, timezone
 from .database import Base
 
 
@@ -8,7 +8,7 @@ class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     status = Column(String, default="pending")  # pending, processing, completed, failed, sent
     input_files = Column(JSON)  # Список имен загруженных файлов
     output_file = Column(String, nullable=True)
