@@ -407,7 +407,7 @@ async function cancelSchedule() {
 async function generateNow() {
     openModal(
         '🚀 Сгенерировать отчет сейчас?',
-        'Отчет будет немедленно сгенерирован из всех файлов в папке и отправлен на указанный email (если расписание настроено). Продолжить?',
+        'Отчет будет немедленно сгенерирован из всех файлов в папке. Если в расписании указан email, отчет будет отправлен туда. Продолжить?',
         async () => {
             try {
                 const response = await fetch('/api/schedule/generate-now', {
@@ -421,12 +421,16 @@ async function generateNow() {
                 
                 const data = await response.json();
                 
-                alert('✅ Отчет успешно сгенерирован!');
-                loadReports();
+                alert('✅ Генерация отчета запущена! Отчет появится в истории через несколько секунд.');
+                
+                // Обновляем историю через 3 секунды
+                setTimeout(() => {
+                    loadReports();
+                }, 3000);
                 
             } catch (error) {
                 console.error('Ошибка:', error);
-                alert('Ошибка при генерации: ' + error.message);
+                alert('Ошибка при запуске генерации: ' + error.message);
             }
         }
     );

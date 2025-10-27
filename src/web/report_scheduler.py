@@ -189,30 +189,43 @@ class ReportScheduler:
         finally:
             db.close()
     
-    async def _generate_report(self):
-        """Основная функция генерации отчета"""
+    async def _generate_report(self, manual: bool = False):
+        """
+        Основная функция генерации отчета
+        
+        Args:
+            manual: True если вызвано вручную (кнопка "сгенерировать сейчас")
+        """
         db = SessionLocal()
         report = None
         
         try:
-            logger.info("Начало генерации отчета по расписанию")
+            if manual:
+                logger.info("Начало генерации отчета (ручной запуск)")
+            else:
+                logger.info("Начало генерации отчета по расписанию")
             
-            # Получаем активную конфигурацию
+            # Получаем активную конфигурацию (может не быть для ручного запуска)
             config = db.query(ScheduleConfig).filter(
                 ScheduleConfig.is_enabled == True
             ).first()
             
-            if not config:
+            # Для ручного запуска config не обязателен
+            if not config and not manual:
                 logger.error("Активная конфигурация не найдена")
                 return
+            
+            # Определяем email получателя
+            recipient_email = config.recipient_email if config else None
             
             # Проверяем наличие файлов
             files = list(self.shared_files_dir.glob("*.xlsx")) + list(self.shared_files_dir.glob("*.xls"))
             
             if not files:
                 logger.warning("В папке shared_files нет файлов для обработки")
-                config.last_run = datetime.now()
-                db.commit()
+                if config:
+                    config.last_run = datetime.now()
+                    db.commit()
                 return
             
             # Создаем папку для архива
@@ -236,15 +249,16 @@ class ReportScheduler:
             if not all_data:
                 logger.error("Не удалось извлечь данные из файлов")
                 report = Report(
-                    scheduled_time=config.scheduled_time if config.schedule_type == "one_time" else None,
+                    scheduled_time=config.scheduled_time if (config and config.schedule_type == "one_time") else None,
                     output_file="",
                     status="failed",
                     error_message="Не удалось извлечь данные из файлов",
-                    recipient_email=config.recipient_email,
+                    recipient_email=recipient_email,
                     archived_files=archived_file_names
                 )
                 db.add(report)
-                config.last_run = datetime.now()
+                if config:
+                    config.last_run = datetime.now()
                 db.commit()
                 return
             
@@ -263,24 +277,25 @@ class ReportScheduler:
             if not success:
                 logger.error("Ошибка при создании Excel файла")
                 report = Report(
-                    scheduled_time=config.scheduled_time if config.schedule_type == "one_time" else None,
+                    scheduled_time=config.scheduled_time if (config and config.schedule_type == "one_time") else None,
                     output_file="",
                     status="failed",
                     error_message="Ошибка при создании Excel файла",
-                    recipient_email=config.recipient_email,
+                    recipient_email=recipient_email,
                     archived_files=archived_file_names
                 )
                 db.add(report)
-                config.last_run = datetime.now()
+                if config:
+                    config.last_run = datetime.now()
                 db.commit()
                 return
             
             # Создаем запись отчета
             report = Report(
-                scheduled_time=config.scheduled_time if config.schedule_type == "one_time" else None,
+                scheduled_time=config.scheduled_time if (config and config.schedule_type == "one_time") else None,
                 output_file=output_filename,
                 status="completed",
-                recipient_email=config.recipient_email,
+                recipient_email=recipient_email,
                 records_count=len(all_data),
                 departments_count=len(departments),
                 operations_count=len(operations),
@@ -293,12 +308,12 @@ class ReportScheduler:
             
             logger.info(f"Отчет {output_filename} успешно создан")
             
-            # Отправляем на email
-            if config.recipient_email:
+            # Отправляем на email (если указан)
+            if recipient_email:
                 subject = f"Сводный отчет по сельскохозяйственным данным"
                 body = f"""Добрый день!
 
-Во вложении находится автоматически сгенерированный сводный отчет по сельскохозяйственным данным.
+Во вложении находится {'автоматически сгенерированный' if not manual else 'сгенерированный'} сводный отчет по сельскохозяйственным данным.
 
 Дата создания: {datetime.now().strftime('%d.%m.%Y %H:%M')}
 """
@@ -311,9 +326,9 @@ class ReportScheduler:
                     'input_files': archived_file_names
                 }
                 
-                logger.info(f"Отправка отчета на {config.recipient_email}")
+                logger.info(f"Отправка отчета на {recipient_email}")
                 email_success = self.email_sender.send_file(
-                    recipient_email=config.recipient_email,
+                    recipient_email=recipient_email,
                     subject=subject,
                     body=body,
                     file_path=output_path,
@@ -328,15 +343,16 @@ class ReportScheduler:
                     report.error_message = "Ошибка при отправке email"
                     logger.error("Не удалось отправить отчет")
             
-            # Обновляем время последнего запуска
-            config.last_run = datetime.now()
-            
-            # Если это была разовая задача, отключаем расписание
-            if config.schedule_type == "one_time":
-                config.is_enabled = False
-                if self.scheduler.get_job("report_generation"):
-                    self.scheduler.remove_job("report_generation")
-                logger.info("Разовая задача выполнена, расписание отключено")
+            # Обновляем время последнего запуска (только для запланированных задач)
+            if config and not manual:
+                config.last_run = datetime.now()
+                
+                # Если это была разовая задача, отключаем расписание
+                if config.schedule_type == "one_time":
+                    config.is_enabled = False
+                    if self.scheduler.get_job("report_generation"):
+                        self.scheduler.remove_job("report_generation")
+                    logger.info("Разовая задача выполнена, расписание отключено")
             
             db.commit()
             
@@ -353,8 +369,13 @@ class ReportScheduler:
             db.close()
     
     async def generate_now(self) -> Optional[int]:
-        """Немедленная генерация отчета (вне расписания)"""
-        await self._generate_report()
+        """
+        Немедленная генерация отчета (вне расписания)
+        Запускается в отдельном потоке, не блокируя основной event loop
+        """
+        # Запускаем генерацию в отдельном потоке чтобы не блокировать сайт
+        import asyncio
+        await asyncio.to_thread(self._generate_report_sync, manual=True)
         
         # Возвращаем ID последнего созданного отчета
         db = SessionLocal()
@@ -363,4 +384,14 @@ class ReportScheduler:
             return report.id if report else None
         finally:
             db.close()
+    
+    def _generate_report_sync(self, manual: bool = False):
+        """Синхронная обертка для _generate_report (для запуска в отдельном потоке)"""
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._generate_report(manual=manual))
+        finally:
+            loop.close()
 

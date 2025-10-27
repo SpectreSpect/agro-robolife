@@ -372,17 +372,23 @@ async def get_countdown():
 
 @app.post("/api/schedule/generate-now")
 async def generate_now():
-    """Немедленная генерация отчета"""
+    """
+    Немедленная генерация отчета
+    Работает независимо от настройки расписания
+    """
     try:
+        # Запускаем генерацию (не блокирует, работает в фоне)
         report_id = await scheduler.generate_now()
         
-        if report_id:
-            return {"message": "Отчет сгенерирован", "report_id": report_id}
-        else:
-            raise HTTPException(status_code=500, detail="Ошибка при генерации отчета")
+        # Возвращаем успех сразу, генерация продолжается в фоне
+        return {
+            "message": "Генерация отчета запущена",
+            "report_id": report_id,
+            "note": "Отчет генерируется в фоновом режиме. Проверьте историю через несколько секунд."
+        }
     
     except Exception as e:
-        logger.error(f"Ошибка при немедленной генерации: {e}")
+        logger.error(f"Ошибка при запуске генерации: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
