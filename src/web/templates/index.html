@@ -10,82 +10,106 @@
     <div class="container">
         <header>
             <h1>🌾 Система обработки сельскохозяйственных данных</h1>
-            <p class="subtitle">Загрузите Excel файлы для обработки и получите структурированный отчет</p>
+            <p class="subtitle">Управление файлами и автоматическая генерация отчетов</p>
         </header>
 
         <main>
-            <!-- Секция загрузки файлов -->
-            <section class="upload-section">
-                <div class="upload-area" id="uploadArea">
-                    <div class="upload-icon">📁</div>
-                    <h3>Перетащите файлы сюда</h3>
-                    <p>или нажмите для выбора</p>
-                    <input type="file" id="fileInput" multiple accept=".xlsx,.xls" style="display: none;">
+            <!-- Секция 1: Файловый менеджер -->
+            <section class="file-manager-section">
+                <div class="section-header">
+                    <h2>📁 Файловый менеджер</h2>
                     <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
-                        Выбрать файлы
+                        ➕ Загрузить файлы
                     </button>
                 </div>
 
-                <!-- Список загруженных файлов -->
-                <div id="filesList" class="files-list" style="display: none;">
-                    <h3>Загруженные файлы:</h3>
-                    <ul id="filesListItems"></ul>
-                    
-                    <!-- Чекбокс для включения отправки по email -->
-                    <div class="email-option">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="enableEmailSchedule" onchange="toggleScheduleForm()">
-                            <span>📧 Запланировать автоматическую отправку по email</span>
-                        </label>
-                    </div>
-                    
-                    <!-- Форма планирования отправки -->
-                    <div id="scheduleFormContainer" class="schedule-form" style="display: none;">
-                        <h4>Настройки отправки</h4>
-                        <div class="form-group">
-                            <label for="scheduledTime">Время отправки:</label>
-                            <input type="datetime-local" id="scheduledTime" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label for="recipientEmail">Email получателя:</label>
-                            <input type="email" id="recipientEmail" class="form-control" placeholder="example@mail.com">
-                        </div>
-                        <div class="schedule-note">
-                            💡 После обработки файл будет автоматически отправлен в указанное время
-                        </div>
-                    </div>
-                    
-                    <div class="upload-actions">
-                        <button class="btn btn-success" id="processBtn" onclick="processFiles()">
-                            ✓ Обработать файлы
-                        </button>
-                        <button class="btn btn-secondary" onclick="clearFiles()">
-                            ✕ Очистить
-                        </button>
-                    </div>
+                <!-- Drag & Drop зона -->
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📂</div>
+                    <h3>Перетащите файлы сюда</h3>
+                    <p>или нажмите кнопку "Загрузить файлы"</p>
+                    <input type="file" id="fileInput" multiple accept=".xlsx,.xls" style="display: none;">
                 </div>
 
-                <!-- Статус обработки -->
-                <div id="processingStatus" class="processing-status" style="display: none;">
-                    <div class="spinner"></div>
-                    <p>Обработка файлов...</p>
+                <!-- Список файлов -->
+                <div id="filesList" class="files-table">
+                    <p class="loading">Загрузка...</p>
                 </div>
             </section>
 
-            <!-- История обработок -->
+            <!-- Секция 2: Настройка расписания -->
+            <section class="schedule-section">
+                <div class="section-header">
+                    <h2>⏰ Настройка расписания генерации отчетов</h2>
+                </div>
+
+                <div id="scheduleStatus" class="schedule-status">
+                    <p class="loading">Загрузка...</p>
+                </div>
+
+                <div id="scheduleForm" class="schedule-form">
+                    <!-- Переключатель типа расписания -->
+                    <div class="form-group">
+                        <label>Тип задачи:</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="scheduleType" value="one_time" checked onchange="toggleScheduleType()">
+                                <span>Разовая задача</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="scheduleType" value="periodic" onchange="toggleScheduleType()">
+                                <span>Периодическая задача (ежедневно)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Для разовой задачи -->
+                    <div id="oneTimeFields" class="form-group">
+                        <label for="scheduledDateTime">Дата и время отправки:</label>
+                        <input type="datetime-local" id="scheduledDateTime" class="form-control">
+                    </div>
+
+                    <!-- Для периодической задачи -->
+                    <div id="periodicFields" class="form-group" style="display: none;">
+                        <label for="periodicTime">Время отправки (ежедневно):</label>
+                        <input type="time" id="periodicTime" class="form-control" value="14:00">
+                    </div>
+
+                    <!-- Email -->
+                    <div class="form-group">
+                        <label for="recipientEmail">Email получателя:</label>
+                        <input type="email" id="recipientEmail" class="form-control" placeholder="example@mail.com">
+                    </div>
+
+                    <!-- Кнопки -->
+                    <div class="schedule-actions">
+                        <button class="btn btn-success" onclick="setSchedule()">
+                            ✓ Установить расписание
+                        </button>
+                        <button class="btn btn-warning" onclick="generateNow()">
+                            🚀 Сгенерировать сейчас
+                        </button>
+                        <button class="btn btn-secondary" onclick="cancelSchedule()">
+                            ✕ Отменить расписание
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Секция 3: История отчетов -->
             <section class="history-section">
                 <div class="section-header">
-                    <h2>📊 История обработок</h2>
-                    <button class="btn btn-sm" onclick="loadHistory()">🔄 Обновить</button>
+                    <h2>📊 История отчетов</h2>
+                    <button class="btn btn-sm" onclick="loadReports()">🔄 Обновить</button>
                 </div>
-                <div id="historyList" class="history-list">
+                <div id="reportsList" class="reports-list">
                     <p class="loading">Загрузка...</p>
                 </div>
             </section>
         </main>
 
         <footer>
-            <p>Система обработки сельскохозяйственных данных</p>
+            <p>Система обработки сельскохозяйственных данных v3.0</p>
         </footer>
     </div>
 
@@ -106,26 +130,22 @@
         </div>
     </div>
 
-    <!-- Модальное окно редактирования расписания -->
-    <div id="editModal" class="modal">
+    <!-- Модальное окно редактирования имени файла -->
+    <div id="renameModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Редактирование расписания</h3>
-                <span class="modal-close" onclick="closeEditModal()">&times;</span>
+                <h3>Переименовать файл</h3>
+                <span class="modal-close" onclick="closeRenameModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label for="editScheduledTime">Время отправки:</label>
-                    <input type="datetime-local" id="editScheduledTime" class="form-control">
-                </div>
-                <div class="form-group">
-                    <label for="editRecipientEmail">Email получателя:</label>
-                    <input type="email" id="editRecipientEmail" class="form-control">
+                    <label for="newFileName">Новое имя:</label>
+                    <input type="text" id="newFileName" class="form-control">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeEditModal()">Отмена</button>
-                <button class="btn btn-primary" id="editModalSaveBtn">Сохранить</button>
+                <button class="btn btn-secondary" onclick="closeRenameModal()">Отмена</button>
+                <button class="btn btn-primary" id="renameModalSaveBtn">Сохранить</button>
             </div>
         </div>
     </div>
@@ -133,4 +153,3 @@
     <script src="/static/script.js"></script>
 </body>
 </html>
-
