@@ -160,6 +160,353 @@ class OperationalReportParser:
             return []
 
 
+class DailyReportAlgorithmicParser:
+    """Алгоритмический парсер для дневных отчетов со стандартной структурой"""
+    
+    def __init__(self, file_path: Path):
+        self.file_path = file_path
+        self.data = []
+    
+    def validate_structure(self, ws) -> bool:
+        """Проверяет, подходит ли структура таблицы для алгоритмического парсинга"""
+        try:
+            # Ищем строку с заголовками в первых 10 строках
+            header_row = self._find_header_row(ws)
+            if not header_row:
+                logger.debug("Не найдена строка заголовков")
+                return False
+            
+            # Ищем колонки "Итого" и "Остаток"
+            itogo_cols = []
+            ostatok_col = None
+            
+            for col in range(1, ws.max_column + 1):
+                cell_value = ws.cell(header_row, col).value
+                if cell_value:
+                    cell_str = str(cell_value).strip().lower()
+                    if "итого" in cell_str or "итог" in cell_str:
+                        itogo_cols.append(col)
+                    elif "остаток" in cell_str or "остат" in cell_str:
+                        ostatok_col = col
+            
+            # Если нашли только одну "Итого", проверяем подзаголовки
+            if len(itogo_cols) == 1 and header_row < ws.max_row:
+                subheader_row = header_row + 1
+                has_za_den = False
+                has_ot_nachala = False
+                
+                for col in range(1, ws.max_column + 1):
+                    cell_value = ws.cell(subheader_row, col).value
+                    if cell_value:
+                        cell_str = str(cell_value).strip().lower()
+                        if "за день" in cell_str:
+                            has_za_den = True
+                        elif "начала" in cell_str or "начал" in cell_str:
+                            has_ot_nachala = True
+                
+                # Если нашли подзаголовки, считаем что структура валидна
+                if has_za_den and has_ot_nachala:
+                    itogo_cols = [0, 0]  # Заглушка для проверки
+            
+            # Должно быть минимум 2 колонки "Итого" (или подзаголовки)
+            if len(itogo_cols) < 2:
+                logger.debug(f"Найдено только {len(itogo_cols)} колонок 'Итого', нужно минимум 2")
+                return False
+            
+            # Должна быть колонка "Остаток"
+            if not ostatok_col:
+                logger.debug("Не найдена колонка 'Остаток'")
+                return False
+            
+            # Проверяем наличие данных после заголовка
+            data_row = header_row + 1
+            
+            # Если в строке после заголовка пустая первая ячейка, это подзаголовки
+            first_cell = ws.cell(data_row, 1).value
+            if first_cell is None or (isinstance(first_cell, str) and len(first_cell.strip()) < 3):
+                data_row += 1
+            
+            if data_row > ws.max_row:
+                logger.debug("Нет данных после заголовка")
+                return False
+            
+            # Проверяем, что в строке данных есть числовые значения
+            # Для двухуровневых заголовков проверяем реальные колонки данных
+            has_numeric = False
+            for col in range(1, ws.max_column + 1):
+                val = ws.cell(data_row, col).value
+                if isinstance(val, (int, float)) and val != 0:
+                    has_numeric = True
+                    break
+            
+            if not has_numeric:
+                logger.debug("Нет числовых данных в первой строке")
+                return False
+            
+            logger.info(f"✓ Структура валидна: заголовок на строке {header_row}, {len(itogo_cols)} колонок 'Итого'")
+            return True
+            
+        except Exception as e:
+            logger.debug(f"Ошибка при валидации структуры: {e}")
+            return False
+    
+    def parse(self) -> List[Dict[str, Any]]:
+        """Парсинг дневного отчета алгоритмически"""
+        logger.info(f"Парсинг дневного отчёта (алгоритмически): {self.file_path.name}")
+        
+        try:
+            wb = openpyxl.load_workbook(self.file_path, data_only=True)
+            ws = wb[wb.sheetnames[0]]
+            sheet_name = wb.sheetnames[0]
+            
+            # Извлекаем дату
+            operation_date = self._extract_date(ws)
+            if not operation_date:
+                operation_date = extract_date_from_filename(self.file_path.name) or datetime.now()
+            
+            # Извлекаем название подразделения
+            department_name = self._extract_department(ws)
+            
+            # Находим строку заголовков
+            header_row = self._find_header_row(ws)
+            if not header_row:
+                logger.error("Не найдена строка заголовков")
+                return []
+            
+            # Определяем колонки
+            columns = self._find_columns(ws, header_row)
+            if not columns:
+                logger.error("Не удалось определить колонки")
+                return []
+            
+            logger.info(f"  Найдены колонки: операция={columns['operation']}, культура={columns['crop']}, " +
+                       f"итого1={columns['itogo1']}, итого2={columns['itogo2']}, остаток={columns['ostatok']}")
+            
+            # Определяем с какой строки начинаются данные
+            # Если есть двухуровневые заголовки (подзаголовки), пропускаем их
+            data_start_row = header_row + 1
+            
+            # Проверяем, есть ли подзаголовки
+            first_cell = ws.cell(data_start_row, 1).value
+            if first_cell is None or (isinstance(first_cell, str) and len(first_cell.strip()) < 3):
+                # Вероятно подзаголовки, пропускаем еще одну строку
+                data_start_row += 1
+            
+            # Парсим строки данных
+            records_count = 0
+            for row_idx in range(data_start_row, ws.max_row + 1):
+                # Проверяем первую колонку
+                operation_val = ws.cell(row_idx, columns['operation']).value
+                
+                if not operation_val:
+                    break  # Пустая строка - конец данных
+                
+                operation_str = str(operation_val).strip()
+                if not operation_str or operation_str.lower().startswith("итого"):
+                    continue  # Строка "Итого" - пропускаем
+                
+                # Извлекаем данные
+                crop_val = ws.cell(row_idx, columns['crop']).value
+                crop_name = str(crop_val).strip() if crop_val else ""
+                
+                itogo1_val = ws.cell(row_idx, columns['itogo1']).value
+                itogo2_val = ws.cell(row_idx, columns['itogo2']).value
+                ostatok_val = ws.cell(row_idx, columns['ostatok']).value
+                
+                work_per_day = float(itogo1_val) if isinstance(itogo1_val, (int, float)) else 0
+                work_from_start = float(itogo2_val) if isinstance(itogo2_val, (int, float)) else 0
+                remaining_work = float(ostatok_val) if isinstance(ostatok_val, (int, float)) else 0
+                
+                # Пропускаем строки без данных
+                if work_per_day == 0 and work_from_start == 0 and remaining_work == 0:
+                    continue
+                
+                # Вычисляем процент выполнения
+                total = work_from_start + remaining_work
+                completion_percent = work_from_start / total if total > 0 else 0
+                
+                record = {
+                    "operation_date": operation_date,
+                    "department_name": department_name,
+                    "operation_name": operation_str,
+                    "crop_name": crop_name,
+                    "work_per_day": work_per_day,
+                    "work_from_start": work_from_start,
+                    "remaining_work": remaining_work,
+                    "completion_percent": completion_percent,
+                    "source_file": self.file_path.name,
+                    "source_sheet": sheet_name
+                }
+                
+                self.data.append(record)
+                records_count += 1
+            
+            wb.close()
+            logger.info(f"  Извлечено {records_count} записей алгоритмически")
+            return self.data
+            
+        except Exception as e:
+            logger.error(f"Ошибка при алгоритмическом парсинге {self.file_path.name}: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _find_header_row(self, ws) -> Optional[int]:
+        """Находит строку с заголовками (содержит 'Итого' и 'Остаток')"""
+        for row in range(1, min(11, ws.max_row + 1)):
+            has_itogo = False
+            has_ostatok = False
+            
+            for col in range(1, ws.max_column + 1):
+                cell_value = ws.cell(row, col).value
+                if cell_value:
+                    cell_str = str(cell_value).strip().lower()
+                    if "итого" in cell_str or "итог" in cell_str:
+                        has_itogo = True
+                    if "остаток" in cell_str or "остат" in cell_str:
+                        has_ostatok = True
+            
+            if has_itogo and has_ostatok:
+                return row
+        
+        return None
+    
+    def _find_columns(self, ws, header_row: int) -> Optional[Dict[str, int]]:
+        """Определяет индексы нужных колонок"""
+        itogo_cols = []
+        ostatok_col = None
+        
+        # Сначала ищем в текущей строке заголовков
+        for col in range(1, ws.max_column + 1):
+            cell_value = ws.cell(header_row, col).value
+            if cell_value:
+                cell_str = str(cell_value).strip().lower()
+                if "итого" in cell_str or "итог" in cell_str:
+                    itogo_cols.append(col)
+                elif "остаток" in cell_str or "остат" in cell_str:
+                    ostatok_col = col
+        
+        # Если нашли только одну "Итого", проверяем следующую строку на подзаголовки
+        if len(itogo_cols) == 1 and header_row < ws.max_row:
+            subheader_row = header_row + 1
+            itogo_col = itogo_cols[0]
+            
+            # Ищем "за день" и "от начала" под "Итого"
+            za_den_col = None
+            ot_nachala_col = None
+            
+            # Проверяем колонки около найденной "Итого"
+            for offset in range(-2, 5):  # Проверяем в радиусе ±2 колонок
+                check_col = itogo_col + offset
+                if check_col < 1 or check_col > ws.max_column:
+                    continue
+                
+                cell_value = ws.cell(subheader_row, check_col).value
+                if cell_value:
+                    cell_str = str(cell_value).strip().lower()
+                    if "за день" in cell_str or "за д" in cell_str:
+                        za_den_col = check_col
+                    elif "от начала" in cell_str or "с начала" in cell_str or "начал" in cell_str:
+                        ot_nachala_col = check_col
+            
+            # Если нашли подзаголовки, используем их
+            if za_den_col and ot_nachala_col:
+                logger.info(f"  Обнаружены двухуровневые заголовки: 'Итого' с подколонками")
+                itogo_cols = [za_den_col, ot_nachala_col]
+        
+        # Проверяем что нашли 2 колонки "Итого" и "Остаток"
+        if len(itogo_cols) < 2 or not ostatok_col:
+            return None
+        
+        return {
+            "operation": 1,  # Первая колонка - операция
+            "crop": 2,  # Вторая колонка - культура
+            "itogo1": itogo_cols[0],  # Первая "Итого" - за день
+            "itogo2": itogo_cols[1],  # Вторая "Итого" - с начала
+            "ostatok": ostatok_col  # "Остаток"
+        }
+    
+    def _extract_date(self, ws) -> Optional[datetime]:
+        """Извлекает дату из первых строк таблицы"""
+        # Ищем дату в первых 5 строках
+        for row in range(1, min(6, ws.max_row + 1)):
+            for col in range(1, min(10, ws.max_column + 1)):
+                cell_value = ws.cell(row, col).value
+                if isinstance(cell_value, datetime):
+                    return cell_value
+        
+        return None
+    
+    def _extract_department(self, ws) -> str:
+        """Извлекает название подразделения из заголовка"""
+        # Служебные слова, которые нужно исключить
+        exclude_words = {
+            "отчет", "отчёт", "план", "таблица", "по", "за", "на", "свод",
+            "данные", "результаты", "отделение", "для", "дневного", "работ",
+            "сводный", "итоговый", "операции", "полевые", "наименование",
+            "название", "культур", "культуры"
+        }
+        
+        candidates = []
+        
+        # Ищем название в первых 5 строках
+        for row in range(1, min(6, ws.max_row + 1)):
+            for col in range(1, min(15, ws.max_column + 1)):
+                cell_value = ws.cell(row, col).value
+                if cell_value and isinstance(cell_value, str):
+                    text = cell_value.strip()
+                    
+                    # Пропускаем слишком длинные строки (больше 50 символов)
+                    if len(text) > 50:
+                        continue
+                    
+                    # Пропускаем слишком короткие
+                    if len(text) < 3:
+                        continue
+                    
+                    # Пропускаем даты и числа
+                    if text.replace(".", "").replace("/", "").replace("-", "").replace(" ", "").isdigit():
+                        continue
+                    
+                    text_lower = text.lower()
+                    
+                    # Пропускаем строки, которые полностью состоят из служебных слов
+                    words = text_lower.split()
+                    filtered_words = [w for w in words if w not in exclude_words]
+                    
+                    if not filtered_words:
+                        continue
+                    
+                    # Если осталось 1-5 слов
+                    if 1 <= len(filtered_words) <= 5:
+                        # Восстанавливаем исходный регистр
+                        result_words = []
+                        for word in text.split():
+                            if word.lower() not in exclude_words:
+                                result_words.append(word)
+                        
+                        if result_words:
+                            department = " ".join(result_words)
+                            
+                            # Приоритет названиям с "ПУ", "ООО", "ЗАО" и т.д.
+                            priority = 0
+                            if any(prefix in department.upper() for prefix in ["ПУ", "ООО", "ЗАО", "ОАО", "АО"]):
+                                priority = 10
+                            # Или короткие названия (обычно названия организаций)
+                            elif len(department.split()) <= 3:
+                                priority = 5
+                            
+                            candidates.append((priority, department, row, col))
+        
+        # Выбираем кандидата с наивысшим приоритетом
+        if candidates:
+            candidates.sort(key=lambda x: (-x[0], x[2], x[3]))  # Сортируем по приоритету, потом по позиции
+            return candidates[0][1]
+        
+        # Если не нашли, возвращаем имя файла без расширения
+        return self.file_path.stem
+
+
 class DailyReportLLMParser:
     
     def __init__(self, file_path: Path):
@@ -283,21 +630,42 @@ class HybridParser:
             ws = wb[wb.sheetnames[0]]
             
             sheet_data = ExcelToLLMConverter.convert_sheet_to_dict(ws, wb.sheetnames[0])
-            wb.close()
             
+            # Определяем тип таблицы через LLM
             table_type = self.llm_client.determine_table_type(sheet_data, self.file_path.name)
             
             if table_type == "operational_report":
-                logger.info(f"Используется алгоритмический парсер для {self.file_path.name}")
+                logger.info(f"Тип: оперативная отчётность → используется алгоритмический парсер")
+                wb.close()
                 parser = OperationalReportParser(self.file_path)
-            else:
-                logger.info(f"Используется LLM парсер для {self.file_path.name}")
-                parser = DailyReportLLMParser(self.file_path)
+                return parser.parse()
             
-            return parser.parse()
+            elif table_type == "daily_report":
+                # Сначала пробуем алгоритмический парсер
+                algo_parser = DailyReportAlgorithmicParser(self.file_path)
+                
+                # Проверяем структуру
+                if algo_parser.validate_structure(ws):
+                    logger.info(f"Тип: дневной отчёт → используется алгоритмический парсер ✓")
+                    wb.close()
+                    return algo_parser.parse()
+                else:
+                    logger.info(f"Тип: дневной отчёт → структура нестандартная, используется LLM парсер")
+                    wb.close()
+                    parser = DailyReportLLMParser(self.file_path)
+                    return parser.parse()
+            
+            else:
+                # Для неизвестных типов используем LLM
+                logger.info(f"Тип: неизвестный → используется LLM парсер")
+                wb.close()
+                parser = DailyReportLLMParser(self.file_path)
+                return parser.parse()
             
         except Exception as e:
-            logger.error(f"Ошибка при определении типа файла {self.file_path.name}: {e}")
+            logger.error(f"Ошибка при парсинге {self.file_path.name}: {e}")
+            import traceback
+            traceback.print_exc()
             return []
 
 

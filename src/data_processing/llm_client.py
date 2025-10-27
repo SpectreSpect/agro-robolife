@@ -139,10 +139,15 @@ Data (first 50 rows):
 This is a DAILY REPORT with single enterprise. Extract data as follows:
 
 1. Find date in header (usually in first 3 rows, cell might contain date) or extract from filename pattern _DDMM.xlsx
-2. Find department/enterprise name:
-   - Look in header area (first 3-4 rows)
-   - It can be any company or department name
-   - Examples: "ПУ Север", "Агрохолдинг Рассвет", "ООО Колос", etc.
+2. Find the department or enterprise name:
+   * Look in the header area (the first 3 rows).
+   * The name cannot be empty.
+   * It should represent a company, organization, or department.
+   * Ignore any text that looks like a report title or description, such as:
+     “Отчет”, “План”, “Свод”, “Данные”, “по”, “за”, “на”, “таблица”, “результаты”, “Отделение”.
+   * The name is typically short (1–4 words) and may include forms of ownership like “ПУ”, “ООО”, “ЗАО”, or “АО”.
+   * Return only the department or enterprise name — clean text without extra words or formatting.
+   * Examples: “ПУ Север”, “Агрохолдинг Рассвет”, “ООО Колос”, ”Прогресс”, ”Мир”.
 3. Find header row with column names (look for "Итого", "Остаток" columns)
 4. Identify columns:
    - "Итого" columns (there are usually TWO adjacent "Итого" columns)

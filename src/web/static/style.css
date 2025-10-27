@@ -631,3 +631,300 @@ footer {
     }
 }
 
+/* ============================================================================
+   Новые стили для файлового менеджера
+   ============================================================================ */
+
+.file-manager-section {
+    margin-bottom: 40px;
+}
+
+.files-table {
+    margin-top: 20px;
+}
+
+.files-table-content {
+    width: 100%;
+    background: white;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+}
+
+.files-table-content thead {
+    background: var(--primary-color);
+    color: white;
+}
+
+.files-table-content th {
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.files-table-content td {
+    padding: 15px;
+    border-bottom: 1px solid var(--light-color);
+}
+
+.files-table-content tbody tr {
+    transition: background-color 0.3s ease;
+}
+
+.files-table-content tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.files-table-content tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.file-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+}
+
+.file-icon {
+    font-size: 1.2rem;
+}
+
+.file-actions {
+    display: flex;
+    gap: 5px;
+    justify-content: flex-end;
+}
+
+.empty-message {
+    text-align: center;
+    padding: 40px;
+    color: #7f8c8d;
+    font-style: italic;
+    background: #f8f9fa;
+    border-radius: var(--border-radius);
+}
+
+/* ============================================================================
+   Секция расписания
+   ============================================================================ */
+
+.schedule-section {
+    margin-bottom: 40px;
+    background: #f8f9fa;
+    padding: 30px;
+    border-radius: var(--border-radius);
+}
+
+.schedule-status {
+    margin-bottom: 20px;
+}
+
+.schedule-active {
+    background: #d4edda;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.schedule-active h3 {
+    color: #155724;
+    margin-bottom: 10px;
+    font-size: 1.2rem;
+}
+
+.schedule-active p {
+    color: #155724;
+    margin: 5px 0;
+}
+
+.schedule-inactive {
+    background: #f8d7da;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid var(--danger-color);
+}
+
+.schedule-inactive p {
+    color: #721c24;
+    margin: 0;
+}
+
+.countdown-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 10px !important;
+}
+
+.radio-group {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 1rem;
+    color: var(--dark-color);
+    padding: 10px 15px;
+    background: white;
+    border-radius: 8px;
+    border: 2px solid var(--light-color);
+    transition: all 0.3s ease;
+}
+
+.radio-label:hover {
+    border-color: var(--primary-color);
+    background: #f0f8ff;
+}
+
+.radio-label input[type="radio"] {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+}
+
+.radio-label input[type="radio"]:checked + span {
+    font-weight: 600;
+}
+
+.schedule-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+/* ============================================================================
+   История отчетов
+   ============================================================================ */
+
+.reports-list {
+    display: grid;
+    gap: 15px;
+}
+
+.report-item {
+    background: white;
+    padding: 20px;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    transition: all 0.3s ease;
+    animation: fadeIn 0.5s ease;
+}
+
+.report-item:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.report-date {
+    font-size: 0.9rem;
+    color: #7f8c8d;
+}
+
+.report-details {
+    margin-bottom: 15px;
+}
+
+.report-details details {
+    margin-top: 10px;
+}
+
+.report-details summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--dark-color);
+    padding: 5px;
+}
+
+.report-details summary:hover {
+    color: var(--primary-color);
+}
+
+.report-details ul {
+    margin-top: 10px;
+    margin-left: 20px;
+    list-style: disc;
+}
+
+.report-details li {
+    padding: 3px 0;
+    color: #555;
+}
+
+.report-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin: 15px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.report-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* ============================================================================
+   Адаптивность для новых элементов
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    .files-table-content {
+        font-size: 0.9rem;
+    }
+    
+    .files-table-content th,
+    .files-table-content td {
+        padding: 10px 5px;
+    }
+    
+    .file-actions {
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .file-actions .btn-sm {
+        width: 100%;
+        padding: 10px;
+    }
+    
+    .radio-group {
+        flex-direction: column;
+    }
+    
+    .radio-label {
+        width: 100%;
+    }
+    
+    .schedule-actions {
+        flex-direction: column;
+    }
+    
+    .schedule-actions .btn {
+        width: 100%;
+    }
+    
+    .report-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+

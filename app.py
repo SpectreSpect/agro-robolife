@@ -5,8 +5,8 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Form
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
@@ -17,26 +17,29 @@ import uvicorn
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.web.database import get_db, init_db
-from src.web.models import ProcessingJob
-from src.web.scheduler import JobScheduler
-from src.data_processing import DataReader, DataParser, TableBuilder
+from src.web.models import Report, ScheduleConfig
+from src.web.report_scheduler import ReportScheduler
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Agro Data Processing System", version="2.0")
+app = FastAPI(title="Agro Data Processing System", version="3.0")
 
 BASE_DIR = Path("src/web")
 STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
-UPLOAD_DIR = BASE_DIR.parent.parent / "uploads"
-OUTPUT_DIR = BASE_DIR.parent.parent / "outputs"
+SHARED_FILES_DIR = Path("shared_files")
+ARCHIVED_FILES_DIR = Path("archived_files")
+OUTPUT_DIR = Path("outputs")
+TEMPLATE_PATH = Path("templates") / "dashboard_template.xlsx"
 
+# Создаем необходимые директории
 STATIC_DIR.mkdir(exist_ok=True)
 TEMPLATES_DIR.mkdir(exist_ok=True)
-UPLOAD_DIR.mkdir(exist_ok=True)
+SHARED_FILES_DIR.mkdir(exist_ok=True)
+ARCHIVED_FILES_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -44,18 +47,24 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Глобальный планировщик
-scheduler = JobScheduler(OUTPUT_DIR)
+scheduler = ReportScheduler(
+    shared_files_dir=SHARED_FILES_DIR,
+    archived_files_dir=ARCHIVED_FILES_DIR,
+    output_dir=OUTPUT_DIR,
+    template_path=TEMPLATE_PATH
+)
 
 
 # Pydantic модели для запросов
 class ScheduleRequest(BaseModel):
-    scheduled_time: str  # ISO format
+    schedule_type: str  # "one_time" или "periodic"
     recipient_email: EmailStr
+    scheduled_time: Optional[str] = None  # ISO format для one_time
+    periodic_time: Optional[str] = None  # "HH:MM" для periodic
 
 
-class UpdateScheduleRequest(BaseModel):
-    scheduled_time: Optional[str] = None
-    recipient_email: Optional[EmailStr] = None
+class FileRenameRequest(BaseModel):
+    new_name: str
 
 
 @app.on_event("startup")
@@ -63,164 +72,148 @@ async def startup_event():
     init_db()
     logger.info("База данных инициализирована")
     scheduler.start()
-    logger.info("Планировщик задач запущен")
+    logger.info("Планировщик отчетов запущен")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     scheduler.shutdown()
-    logger.info("Планировщик задач остановлен")
+    logger.info("Планировщик отчетов остановлен")
 
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.post("/api/upload")
-async def upload_files(
-    files: List[UploadFile] = File(...), db: Session = Depends(get_db)
-):
+# ============================================================================
+# API для управления файлами
+# ============================================================================
 
+@app.get("/api/files")
+async def get_files():
+    """Получить список файлов из shared_files"""
     try:
+        files = []
+        for file_path in SHARED_FILES_DIR.iterdir():
+            if file_path.is_file() and file_path.suffix.lower() in ['.xlsx', '.xls']:
+                stat = file_path.stat()
+                files.append({
+                    "name": file_path.name,
+                    "size": stat.st_size,
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+        
+        # Сортируем по дате модификации (новые первые)
+        files.sort(key=lambda x: x["modified"], reverse=True)
+        
+        return {"files": files}
+    
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка файлов: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-        job = ProcessingJob(status="pending", input_files=[])
-        db.add(job)
-        db.commit()
-        db.refresh(job)
 
-        job_dir = UPLOAD_DIR / str(job.id)
-        job_dir.mkdir(exist_ok=True)
-
+@app.post("/api/files/upload")
+async def upload_files(files: List[UploadFile] = File(...)):
+    """Загрузить файлы в shared_files"""
+    try:
         uploaded_files = []
+        
         for file in files:
             if not file.filename.endswith((".xlsx", ".xls")):
                 continue
-
-            file_path = job_dir / file.filename
+            
+            file_path = SHARED_FILES_DIR / file.filename
+            
+            # Если файл уже существует, добавляем timestamp
+            if file_path.exists():
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                name, ext = os.path.splitext(file.filename)
+                file_path = SHARED_FILES_DIR / f"{name}_{timestamp}{ext}"
+            
             with open(file_path, "wb") as f:
                 content = await file.read()
                 f.write(content)
-
-            uploaded_files.append(file.filename)
-            logger.info(f"Загружен файл: {file.filename}")
-
-        job.input_files = uploaded_files
-        db.commit()
-
+            
+            uploaded_files.append(file_path.name)
+            logger.info(f"Загружен файл: {file_path.name}")
+        
         return {
-            "job_id": job.id,
             "files": uploaded_files,
-            "message": f"Загружено {len(uploaded_files)} файлов",
+            "message": f"Загружено {len(uploaded_files)} файлов"
         }
-
+    
     except Exception as e:
         logger.error(f"Ошибка при загрузке файлов: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/process/{job_id}")
-async def process_files(job_id: int, db: Session = Depends(get_db)):
-
+@app.delete("/api/files/{filename}")
+async def delete_file(filename: str):
+    """Удалить файл из shared_files"""
     try:
-
-        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
-        if not job:
-            raise HTTPException(status_code=404, detail="Задача не найдена")
-
-        job.status = "processing"
-        db.commit()
-
-        job_dir = UPLOAD_DIR / str(job_id)
-
-        if not job_dir.exists():
-            job.status = "failed"
-            job.error_message = "Папка с файлами не найдена"
-            db.commit()
-            raise HTTPException(status_code=404, detail="Папка с файлами не найдена")
-
-        logger.info(f"Начало обработки задачи {job_id}")
-
-        data_reader = DataReader(str(job_dir))
-        data_parser = DataParser(job_dir)
-
-        template_path = BASE_DIR.parent.parent / "templates" / "dashboard_template.xlsx"
-        table_builder = TableBuilder(str(template_path))
-
-        all_data = data_parser.parse_all_files()
-
-        if not all_data:
-            job.status = "failed"
-            job.error_message = "Не удалось извлечь данные из файлов"
-            db.commit()
-            raise HTTPException(status_code=400, detail="Не удалось извлечь данные")
-
-        departments = set(record["department_name"] for record in all_data)
-        operations = set(record["operation_name"] for record in all_data)
-        crops = set(record["crop_name"] for record in all_data)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"processed_{job_id}_{timestamp}.xlsx"
-        output_path = OUTPUT_DIR / output_filename
-
-        success = table_builder.build_table(all_data, str(output_path), "Отчет за день")
-
-        if success:
-            job.status = "completed"
-            job.output_file = output_filename
-            job.records_count = len(all_data)
-            job.departments_count = len(departments)
-            job.operations_count = len(operations)
-            job.crops_count = len(crops)
-            logger.info(f"Обработка задачи {job_id} завершена успешно")
-        else:
-            job.status = "failed"
-            job.error_message = "Ошибка при создании Excel файла"
-
-        db.commit()
-
-        return job.to_dict()
-
+        file_path = SHARED_FILES_DIR / filename
+        
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Файл не найден")
+        
+        file_path.unlink()
+        logger.info(f"Удален файл: {filename}")
+        
+        return {"message": "Файл удален"}
+    
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при обработке задачи {job_id}: {e}")
-        import traceback
-
-        traceback.print_exc()
-
-        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
-        if job:
-            job.status = "failed"
-            job.error_message = str(e)
-            db.commit()
-
+        logger.error(f"Ошибка при удалении файла: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/download/{job_id}")
-async def download_file(job_id: int, db: Session = Depends(get_db)):
-
+@app.put("/api/files/{filename}/rename")
+async def rename_file(filename: str, request: FileRenameRequest):
+    """Переименовать файл в shared_files"""
     try:
-        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
-        if not job:
-            raise HTTPException(status_code=404, detail="Задача не найдена")
-
-        if job.status not in ["completed", "sent"]:
-            raise HTTPException(status_code=400, detail="Обработка не завершена")
-
-        output_path = OUTPUT_DIR / job.output_file
-
-        if not output_path.exists():
+        old_path = SHARED_FILES_DIR / filename
+        new_path = SHARED_FILES_DIR / request.new_name
+        
+        if not old_path.exists():
             raise HTTPException(status_code=404, detail="Файл не найден")
+        
+        if new_path.exists():
+            raise HTTPException(status_code=400, detail="Файл с таким именем уже существует")
+        
+        # Проверяем расширение
+        if not request.new_name.endswith((".xlsx", ".xls")):
+            raise HTTPException(status_code=400, detail="Неправильное расширение файла")
+        
+        old_path.rename(new_path)
+        logger.info(f"Файл переименован: {filename} -> {request.new_name}")
+        
+        return {"message": "Файл переименован", "new_name": request.new_name}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при переименовании файла: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/api/files/download/{filename}")
+async def download_shared_file(filename: str):
+    """Скачать файл из shared_files"""
+    try:
+        file_path = SHARED_FILES_DIR / filename
+        
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Файл не найден")
+        
         return FileResponse(
-            path=str(output_path),
-            filename=job.output_file,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            path=str(file_path),
+            filename=filename,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
+    
     except HTTPException:
         raise
     except Exception as e:
@@ -228,154 +221,47 @@ async def download_file(job_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/history")
-async def get_history(db: Session = Depends(get_db)):
+# ============================================================================
+# API для управления расписанием
+# ============================================================================
 
+@app.get("/api/schedule")
+async def get_schedule():
+    """Получить текущее расписание"""
     try:
-        jobs = (
-            db.query(ProcessingJob)
-            .order_by(ProcessingJob.created_at.desc())
-            .limit(50)
-            .all()
-        )
-        return [job.to_dict() for job in jobs]
-    except Exception as e:
-        logger.error(f"Ошибка при получении истории: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/jobs/{job_id}")
-async def delete_job(job_id: int, db: Session = Depends(get_db)):
-
-    try:
-        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
-        if not job:
-            raise HTTPException(status_code=404, detail="Задача не найдена")
-
-        # Отменяем запланированную отправку
-        scheduler.cancel_job(job_id)
-
-        job_dir = UPLOAD_DIR / str(job_id)
-        if job_dir.exists():
-            shutil.rmtree(job_dir)
-
-        if job.output_file:
-            output_path = OUTPUT_DIR / job.output_file
-            if output_path.exists():
-                output_path.unlink()
-
-        db.delete(job)
-        db.commit()
-
-        return {"message": "Задача удалена"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при удалении задачи: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/job/{job_id}")
-async def get_job(job_id: int, db: Session = Depends(get_db)):
-
-    try:
-        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
-        if not job:
-            raise HTTPException(status_code=404, detail="Задача не найдена")
-        return job.to_dict()
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при получении задачи: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/jobs/{job_id}/schedule")
-async def schedule_job(
-    job_id: int,
-    request: ScheduleRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Планирует отправку задачи на указанное время.
-    
-    Время обрабатывается следующим образом:
-    1. JavaScript отправляет ISO время с timezone пользователя
-    2. Сервер конвертирует в локальное время через astimezone()
-    3. Сохраняет в БД без timezone
-    4. Планировщик запускает в локальное время сервера
-    5. Таймер в браузере показывает оставшееся время в часовом поясе пользователя
-    """
-    try:
-        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
-        if not job:
-            raise HTTPException(status_code=404, detail="Задача не найдена")
+        schedule = scheduler.get_active_schedule()
         
-        if job.status != "completed":
-            raise HTTPException(
-                status_code=400,
-                detail="Задача должна быть завершена перед планированием отправки"
-            )
-        
-        scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
-        scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
-        
-        if scheduled_time_utc.tzinfo:
-            scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
+        if schedule:
+            return schedule
         else:
-            scheduled_time = scheduled_time_utc
-        
-        current_time = datetime.now()
-        
-        if scheduled_time <= current_time:
-            raise HTTPException(
-                status_code=400,
-                detail="Время отправки должно быть в будущем"
-            )
-        
-        job.scheduled_time = scheduled_time
-        job.recipient_email = request.recipient_email
-        job.is_cancelled = False
-        db.commit()
-        
-        scheduler.schedule_job(job_id, scheduled_time)
-        
-        logger.info(
-            f"Задача {job_id} запланирована на {scheduled_time} (локальное время) "
-            f"для {request.recipient_email}"
-        )
-        
-        return job.to_dict()
-        
-    except HTTPException:
-        raise
+            return {
+                "is_enabled": False,
+                "schedule_type": None,
+                "scheduled_time": None,
+                "periodic_time": None,
+                "recipient_email": None
+            }
+    
     except Exception as e:
-        logger.error(f"Ошибка при планировании задачи {job_id}: {e}")
+        logger.error(f"Ошибка при получении расписания: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.put("/api/jobs/{job_id}/schedule")
-async def update_schedule(
-    job_id: int,
-    request: UpdateScheduleRequest,
-    db: Session = Depends(get_db)
-):
-    """Обновляет расписание или email для задачи"""
+@app.post("/api/schedule")
+async def set_schedule(request: ScheduleRequest):
+    """Установить расписание"""
     try:
-        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
-        if not job:
-            raise HTTPException(status_code=404, detail="Задача не найдена")
+        if request.schedule_type not in ["one_time", "periodic"]:
+            raise HTTPException(status_code=400, detail="Неверный тип расписания")
         
-        if job.status == "sent":
-            raise HTTPException(
-                status_code=400,
-                detail="Задача уже отправлена, изменение невозможно"
-            )
+        scheduled_time = None
+        periodic_time = None
         
-        updated = False
-        
-        if request.scheduled_time:
+        if request.schedule_type == "one_time":
+            if not request.scheduled_time:
+                raise HTTPException(status_code=400, detail="Не указано время для разовой задачи")
+            
+            # Парсим ISO время
             scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
             scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
             
@@ -384,106 +270,196 @@ async def update_schedule(
             else:
                 scheduled_time = scheduled_time_utc
             
-            current_time = datetime.now()
+            if scheduled_time <= datetime.now():
+                raise HTTPException(status_code=400, detail="Время должно быть в будущем")
+        
+        elif request.schedule_type == "periodic":
+            if not request.periodic_time:
+                raise HTTPException(status_code=400, detail="Не указано время для периодической задачи")
             
-            if scheduled_time <= current_time:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Время отправки должно быть в будущем"
-                )
-            
-            job.scheduled_time = scheduled_time
-            job.is_cancelled = False
-            
-            scheduler.schedule_job(job_id, scheduled_time)
-            updated = True
-            logger.info(f"Время отправки задачи {job_id} изменено на {scheduled_time}")
+            # Проверяем формат времени
+            try:
+                hour, minute = map(int, request.periodic_time.split(":"))
+                if not (0 <= hour < 24 and 0 <= minute < 60):
+                    raise ValueError()
+                periodic_time = request.periodic_time
+            except:
+                raise HTTPException(status_code=400, detail="Неверный формат времени (ожидается HH:MM)")
         
-        # Обновляем email если указан
-        if request.recipient_email:
-            job.recipient_email = request.recipient_email
-            updated = True
-            logger.info(f"Email для задачи {job_id} изменен на {request.recipient_email}")
+        success = scheduler.set_schedule(
+            schedule_type=request.schedule_type,
+            recipient_email=request.recipient_email,
+            scheduled_time=scheduled_time,
+            periodic_time=periodic_time
+        )
         
-        if updated:
-            db.commit()
-        
-        return job.to_dict()
-        
+        if success:
+            return {"message": "Расписание установлено"}
+        else:
+            raise HTTPException(status_code=500, detail="Ошибка при установке расписания")
+    
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при обновлении задачи {job_id}: {e}")
+        logger.error(f"Ошибка при установке расписания: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/jobs/{job_id}/send-now")
-async def send_now(job_id: int, db: Session = Depends(get_db)):
+@app.delete("/api/schedule")
+async def cancel_schedule():
+    """Отменить расписание"""
     try:
-        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
-        if not job:
-            raise HTTPException(status_code=404, detail="Задача не найдена")
+        success = scheduler.cancel_schedule()
         
-        if job.status == "sent":
-            raise HTTPException(status_code=400, detail="Задача уже отправлена")
+        if success:
+            return {"message": "Расписание отменено"}
+        else:
+            raise HTTPException(status_code=500, detail="Ошибка при отмене расписания")
+    
+    except Exception as e:
+        logger.error(f"Ошибка при отмене расписания: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/schedule/countdown")
+async def get_countdown():
+    """Получить время до следующей генерации отчета"""
+    try:
+        schedule = scheduler.get_active_schedule()
         
-        if job.status != "completed":
-            raise HTTPException(
-                status_code=400,
-                detail="Задача должна быть завершена перед отправкой"
-            )
+        if not schedule or not schedule.get("is_enabled"):
+            return {"active": False}
         
-        if not job.recipient_email:
-            raise HTTPException(
-                status_code=400,
-                detail="Email получателя не указан"
-            )
+        if schedule["schedule_type"] == "one_time" and schedule["scheduled_time"]:
+            scheduled_dt = datetime.fromisoformat(schedule["scheduled_time"])
+            now = datetime.now()
+            
+            if scheduled_dt > now:
+                seconds_left = (scheduled_dt - now).total_seconds()
+                return {
+                    "active": True,
+                    "type": "one_time",
+                    "scheduled_time": schedule["scheduled_time"],
+                    "seconds_left": int(seconds_left)
+                }
         
-        success = await scheduler.send_immediately(job_id)
+        elif schedule["schedule_type"] == "periodic" and schedule["periodic_time"]:
+            # Вычисляем следующее срабатывание
+            hour, minute = map(int, schedule["periodic_time"].split(":"))
+            now = datetime.now()
+            next_run = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+            
+            if next_run <= now:
+                # Если время уже прошло сегодня, берем завтра
+                from datetime import timedelta
+                next_run += timedelta(days=1)
+            
+            seconds_left = (next_run - now).total_seconds()
+            return {
+                "active": True,
+                "type": "periodic",
+                "periodic_time": schedule["periodic_time"],
+                "next_run": next_run.isoformat(),
+                "seconds_left": int(seconds_left)
+            }
         
-        if not success:
-            raise HTTPException(
-                status_code=500,
-                detail="Ошибка при отправке. Проверьте настройки email"
-            )
+        return {"active": False}
+    
+    except Exception as e:
+        logger.error(f"Ошибка при получении обратного отсчета: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/schedule/generate-now")
+async def generate_now():
+    """Немедленная генерация отчета"""
+    try:
+        report_id = await scheduler.generate_now()
         
-        db.refresh(job)
+        if report_id:
+            return {"message": "Отчет сгенерирован", "report_id": report_id}
+        else:
+            raise HTTPException(status_code=500, detail="Ошибка при генерации отчета")
+    
+    except Exception as e:
+        logger.error(f"Ошибка при немедленной генерации: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# API для отчетов
+# ============================================================================
+
+@app.get("/api/reports")
+async def get_reports(db: Session = Depends(get_db)):
+    """Получить историю отчетов"""
+    try:
+        reports = (
+            db.query(Report)
+            .order_by(Report.created_at.desc())
+            .limit(50)
+            .all()
+        )
+        return [report.to_dict() for report in reports]
+    
+    except Exception as e:
+        logger.error(f"Ошибка при получении отчетов: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/reports/{report_id}/download")
+async def download_report(report_id: int, db: Session = Depends(get_db)):
+    """Скачать отчет"""
+    try:
+        report = db.query(Report).filter(Report.id == report_id).first()
         
-        logger.info(f"Задача {job_id} отправлена немедленно на {job.recipient_email}")
+        if not report:
+            raise HTTPException(status_code=404, detail="Отчет не найден")
         
-        return job.to_dict()
+        output_path = OUTPUT_DIR / report.output_file
         
+        if not output_path.exists():
+            raise HTTPException(status_code=404, detail="Файл отчета не найден")
+        
+        return FileResponse(
+            path=str(output_path),
+            filename=report.output_file,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при немедленной отправке задачи {job_id}: {e}")
+        logger.error(f"Ошибка при скачивании отчета: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/jobs/{job_id}/cancel")
-async def cancel_schedule(job_id: int, db: Session = Depends(get_db)):
+@app.delete("/api/reports/{report_id}")
+async def delete_report(report_id: int, db: Session = Depends(get_db)):
+    """Удалить отчет"""
     try:
-        job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
-        if not job:
-            raise HTTPException(status_code=404, detail="Задача не найдена")
+        report = db.query(Report).filter(Report.id == report_id).first()
         
-        if job.status == "sent":
-            raise HTTPException(status_code=400, detail="Задача уже отправлена")
+        if not report:
+            raise HTTPException(status_code=404, detail="Отчет не найден")
         
-        scheduler.cancel_job(job_id)
+        # Удаляем файл отчета
+        if report.output_file:
+            output_path = OUTPUT_DIR / report.output_file
+            if output_path.exists():
+                output_path.unlink()
         
-        job.is_cancelled = True
-        job.scheduled_time = None
+        db.delete(report)
         db.commit()
         
-        logger.info(f"Отправка задачи {job_id} отменена")
+        logger.info(f"Отчет {report_id} удален")
         
-        return job.to_dict()
-        
+        return {"message": "Отчет удален"}
+    
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при отмене задачи {job_id}: {e}")
+        logger.error(f"Ошибка при удалении отчета: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
