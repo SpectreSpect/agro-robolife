@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -25,7 +25,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# WebSocket Manager для broadcast сообщений всем клиентам
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"WebSocket подключен. Всего соединений: {len(self.active_connections)}")
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+        logger.info(f"WebSocket отключен. Всего соединений: {len(self.active_connections)}")
+
+    async def broadcast(self, message: dict):
+        """Отправить сообщение всем подключенным клиентам"""
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error(f"Ошибка отправки WebSocket сообщения: {e}")
+
+
 app = FastAPI(title="Agro Data Processing System", version="3.0")
+ws_manager = ConnectionManager()
 
 BASE_DIR = Path("src/web")
 STATIC_DIR = BASE_DIR / "static"
@@ -53,6 +78,7 @@ scheduler = ReportScheduler(
     output_dir=OUTPUT_DIR,
     template_path=TEMPLATE_PATH
 )
+scheduler.set_ws_manager(ws_manager)
 
 
 # Pydantic модели для запросов
@@ -467,6 +493,28 @@ async def delete_report(report_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Ошибка при удалении отчета: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ WebSocket и статус генерации ============
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket для real-time обновлений статуса генерации"""
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            # Ожидаем сообщения от клиента (keep-alive)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+
+
+@app.get("/api/generation-status")
+async def get_generation_status():
+    """Получить текущий статус генерации"""
+    return {
+        "is_generating": scheduler.is_generating
+    }
 
 
 if __name__ == "__main__":

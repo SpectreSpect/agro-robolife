@@ -83,15 +83,23 @@
 
                     <!-- Кнопки -->
                     <div class="schedule-actions">
-                        <button class="btn btn-success" onclick="setSchedule()">
+                        <button class="btn btn-success" id="setScheduleBtn" onclick="setSchedule()">
                             ✓ Установить расписание
                         </button>
-                        <button class="btn btn-warning" onclick="generateNow()">
+                        <button class="btn btn-warning" id="generateNowBtn" onclick="generateNow()">
                             🚀 Сгенерировать сейчас
                         </button>
-                        <button class="btn btn-secondary" onclick="cancelSchedule()">
+                        <button class="btn btn-secondary" id="cancelScheduleBtn" onclick="cancelSchedule()">
                             ✕ Отменить расписание
                         </button>
+                    </div>
+                    
+                    <!-- Индикатор генерации -->
+                    <div id="generationStatus" class="generation-status" style="display: none;">
+                        <div class="status-content">
+                            <div class="spinner"></div>
+                            <span id="statusText">Отчёт генерируется...</span>
+                        </div>
                     </div>
                 </div>
             </section>

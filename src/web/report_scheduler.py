@@ -29,11 +29,45 @@ class ReportScheduler:
         self.email_sender = EmailSender()
         self._started = False
         
+        # WebSocket для broadcast статуса генерации
+        self.ws_manager = None
+        self.is_generating = False
+        
         # Создаем папки если не существуют
         self.shared_files_dir.mkdir(exist_ok=True)
         self.archived_files_dir.mkdir(exist_ok=True)
         self.output_dir.mkdir(exist_ok=True)
         
+    def set_ws_manager(self, ws_manager):
+        """Установить WebSocket менеджер для broadcast сообщений"""
+        self.ws_manager = ws_manager
+        logger.info("WebSocket менеджер подключен к планировщику")
+    
+    async def _broadcast_status(self, status: str, **kwargs):
+        """Отправить статус генерации всем подключенным клиентам"""
+        if self.ws_manager:
+            message = {"status": status, **kwargs}
+            await self.ws_manager.broadcast(message)
+    
+    def _broadcast_status_sync(self, status: str, **kwargs):
+        """Синхронная обертка для broadcast (для использования в синхронном коде)"""
+        if self.ws_manager:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Если event loop уже запущен, создаем task
+                    asyncio.create_task(self._broadcast_status(status, **kwargs))
+                else:
+                    # Если нет активного loop, запускаем синхронно
+                    loop.run_until_complete(self._broadcast_status(status, **kwargs))
+            except RuntimeError:
+                # Если нет event loop, создаем новый
+                loop = asyncio.new_event_loop()
+                try:
+                    loop.run_until_complete(self._broadcast_status(status, **kwargs))
+                finally:
+                    loop.close()
+    
     def start(self):
         """Запуск планировщика"""
         if not self._started:
@@ -198,8 +232,13 @@ class ReportScheduler:
         """
         db = SessionLocal()
         report = None
+        report_id = None
         
         try:
+            # Устанавливаем флаг генерации и уведомляем клиентов
+            self.is_generating = True
+            await self._broadcast_status("started")
+            
             if manual:
                 logger.info("Начало генерации отчета (ручной запуск)")
             else:
@@ -356,6 +395,10 @@ class ReportScheduler:
             
             db.commit()
             
+            # Сохраняем ID отчета для broadcast
+            if report:
+                report_id = report.id
+            
         except Exception as e:
             logger.error(f"Ошибка при генерации отчета: {e}")
             import traceback
@@ -365,7 +408,18 @@ class ReportScheduler:
                 report.status = "failed"
                 report.error_message = f"Ошибка генерации: {str(e)}"
                 db.commit()
+            
+            # Уведомляем об ошибке
+            await self._broadcast_status("failed", error=str(e))
+            
         finally:
+            # Сбрасываем флаг генерации
+            self.is_generating = False
+            
+            # Если отчет успешно создан, уведомляем об этом
+            if report_id:
+                await self._broadcast_status("completed", report_id=report_id)
+            
             db.close()
     
     async def generate_now(self) -> Optional[int]:

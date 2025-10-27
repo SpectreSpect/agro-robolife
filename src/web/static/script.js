@@ -1,6 +1,8 @@
 // Глобальные переменные
 let countdownInterval = null;
 let currentRenamingFile = null;
+let ws = null;
+let wsReconnectTimeout = null;
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
@@ -11,7 +13,90 @@ document.addEventListener('DOMContentLoaded', function() {
     loadReports();
     setDefaultScheduleTime();
     startCountdownUpdate();
+    connectWebSocket();
 });
+
+// ============================================================================
+// WebSocket для real-time обновлений
+// ============================================================================
+
+function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = function() {
+        console.log('WebSocket подключен');
+        if (wsReconnectTimeout) {
+            clearTimeout(wsReconnectTimeout);
+            wsReconnectTimeout = null;
+        }
+    };
+    
+    ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        handleWebSocketMessage(data);
+    };
+    
+    ws.onclose = function() {
+        console.log('WebSocket отключен, попытка переподключения через 3 сек...');
+        wsReconnectTimeout = setTimeout(connectWebSocket, 3000);
+    };
+    
+    ws.onerror = function(error) {
+        console.error('WebSocket ошибка:', error);
+    };
+}
+
+function handleWebSocketMessage(data) {
+    const status = data.status;
+    
+    if (status === 'started') {
+        // Генерация началась
+        showGenerationStatus();
+        disableScheduleButtons();
+    } else if (status === 'completed') {
+        // Генерация завершена успешно
+        hideGenerationStatus();
+        enableScheduleButtons();
+        // Автоматически обновляем историю отчётов
+        setTimeout(() => loadReports(), 500);
+        showNotification('Отчёт успешно создан!', 'success');
+    } else if (status === 'failed') {
+        // Генерация не удалась
+        hideGenerationStatus();
+        enableScheduleButtons();
+        showNotification('Ошибка при генерации отчёта: ' + (data.error || 'неизвестная ошибка'), 'error');
+    }
+}
+
+function showGenerationStatus() {
+    const statusDiv = document.getElementById('generationStatus');
+    statusDiv.style.display = 'block';
+}
+
+function hideGenerationStatus() {
+    const statusDiv = document.getElementById('generationStatus');
+    statusDiv.style.display = 'none';
+}
+
+function disableScheduleButtons() {
+    document.getElementById('setScheduleBtn').disabled = true;
+    document.getElementById('generateNowBtn').disabled = true;
+    document.getElementById('cancelScheduleBtn').disabled = true;
+}
+
+function enableScheduleButtons() {
+    document.getElementById('setScheduleBtn').disabled = false;
+    document.getElementById('generateNowBtn').disabled = false;
+    document.getElementById('cancelScheduleBtn').disabled = false;
+}
+
+function showNotification(message, type = 'info') {
+    // Простое уведомление через alert (можно улучшить позже)
+    alert(message);
+}
 
 // ============================================================================
 // Управление файлами
@@ -405,6 +490,19 @@ async function cancelSchedule() {
 }
 
 async function generateNow() {
+    // Проверяем, не идет ли уже генерация
+    try {
+        const statusResponse = await fetch('/api/generation-status');
+        const statusData = await statusResponse.json();
+        
+        if (statusData.is_generating) {
+            alert('⏳ Подождите, идёт генерация отчёта...');
+            return;
+        }
+    } catch (error) {
+        console.error('Ошибка проверки статуса:', error);
+    }
+    
     openModal(
         '🚀 Сгенерировать отчет сейчас?',
         'Отчет будет немедленно сгенерирован из всех файлов в папке. Если в расписании указан email, отчет будет отправлен туда. Продолжить?',
@@ -421,12 +519,9 @@ async function generateNow() {
                 
                 const data = await response.json();
                 
-                alert('✅ Генерация отчета запущена! Отчет появится в истории через несколько секунд.');
-                
-                // Обновляем историю через 3 секунды
-                setTimeout(() => {
-                    loadReports();
-                }, 3000);
+                // WebSocket сам покажет индикатор и обновит историю
+                // Просто закрываем модальное окно
+                closeModal();
                 
             } catch (error) {
                 console.error('Ошибка:', error);
