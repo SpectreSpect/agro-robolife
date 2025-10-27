@@ -1,5 +1,6 @@
 import pandas as pd
 import win32com.client
+import pythoncom
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import logging
@@ -95,6 +96,9 @@ class TableBuilder:
         excel = None
         wb_source = None
         wb_output = None
+        
+        # Инициализируем COM для текущего потока
+        pythoncom.CoInitialize()
 
         try:
 
@@ -155,6 +159,12 @@ class TableBuilder:
                         excel.Quit()
                     except:
                         pass
+            except:
+                pass
+            
+            # Деинициализируем COM
+            try:
+                pythoncom.CoUninitialize()
             except:
                 pass
 
