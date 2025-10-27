@@ -99,8 +99,17 @@ class TableBuilder:
         try:
 
             excel = win32com.client.Dispatch("Excel.Application")
-            excel.Visible = False
-            excel.DisplayAlerts = False
+            
+            # Пытаемся установить Visible и DisplayAlerts
+            try:
+                excel.Visible = False
+            except Exception as e:
+                logger.warning(f"Не удалось установить Visible=False: {e}")
+            
+            try:
+                excel.DisplayAlerts = False
+            except Exception as e:
+                logger.warning(f"Не удалось установить DisplayAlerts=False: {e}")
 
             logger.info(f"Открываем шаблон: {abs_source}")
             wb_source = excel.Workbooks.Open(abs_source)
