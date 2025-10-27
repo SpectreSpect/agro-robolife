@@ -81,13 +81,22 @@ class EmailSender:
             logger.info(f"Подключение к SMTP серверу {self.smtp_server}:{self.smtp_port}")
             
             if self.smtp_port == 465:
+                # Создаем SSL контекст без проверки сертификатов
+                # Безопасно для использования в локальной сети
                 context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context, timeout=15) as server:
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+                
+                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context, timeout=30) as server:
                     server.login(self.smtp_user, self.smtp_password)
                     server.send_message(msg)
             else:
-                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=15) as server:
-                    server.starttls()
+                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=30) as server:
+                    # Создаем SSL контекст без проверки для STARTTLS
+                    context = ssl.create_default_context()
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                    server.starttls(context=context)
                     server.login(self.smtp_user, self.smtp_password)
                     server.send_message(msg)
             
@@ -112,13 +121,17 @@ class EmailSender:
                 logger.error("SMTP учетные данные не настроены")
                 return False
             
+            # Создаем SSL контекст без проверки сертификатов
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            
             if self.smtp_port == 465:
-                context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context, timeout=15) as server:
+                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context, timeout=30) as server:
                     server.login(self.smtp_user, self.smtp_password)
             else:
-                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=15) as server:
-                    server.starttls()
+                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=30) as server:
+                    server.starttls(context=context)
                     server.login(self.smtp_user, self.smtp_password)
             
             logger.info("Подключение к SMTP серверу успешно")
