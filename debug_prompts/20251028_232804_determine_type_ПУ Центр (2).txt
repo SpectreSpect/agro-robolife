@@ -1,0 +1,193 @@
+=== determine_type для ПУ Центр (2).xlsx ===
+Время: 2025-10-28T23:28:04.874705
+Размер: 3665 байт
+============================================================
+
+Determine the type of this Excel table.
+
+File: ПУ Центр (2).xlsx
+Data (first 20 rows):
+[
+  {
+    "col_1": "2025-07-19T00:00:00",
+    "row_num": 2
+  },
+  {
+    "col_1": "Наименование операции",
+    "col_2": "Наименование культуры",
+    "col_3": "ПУ Центр",
+    "row_num": 3
+  },
+  {
+    "col_3": "Отделение 1",
+    "col_5": "Отделение 4",
+    "col_7": "Отделение 5",
+    "col_9": "Отделение 6",
+    "col_11": "Отделение 9",
+    "col_13": "Итого",
+    "col_15": "Остаток",
+    "row_num": 4
+  },
+  {
+    "col_3": "за день",
+    "col_4": "от начала",
+    "col_5": "за день",
+    "col_6": "от начала",
+    "col_7": "за день",
+    "col_8": "от начала",
+    "col_9": "за день",
+    "col_10": "от начала",
+    "col_11": "за день",
+    "col_12": "от начала",
+    "col_13": "за день",
+    "col_14": "от начала",
+    "row_num": 5
+  },
+  {
+    "col_1": " 2-я фунгицидная + инсектицидная обработка",
+    "col_2": "Свекла сахарная",
+    "col_5": 75,
+    "col_6": 350,
+    "col_7": 150,
+    "col_8": 230,
+    "col_9": 110,
+    "col_10": 423,
+    "col_13": 335,
+    "col_14": 1003,
+    "col_15": 530,
+    "col_16": 335,
+    "col_17": 1003,
+    "col_18": 530,
+    "row_num": 6
+  },
+  {
+    "col_1": "Дискование стерни",
+    "col_2": "Пшеница озимая товарная",
+    "col_3": 145,
+    "col_4": 420,
+    "col_5": 60,
+    "col_6": 180,
+    "col_7": 68,
+    "col_8": 340,
+    "col_10": 87,
+    "col_11": 122,
+    "col_12": 534,
+    "col_13": 395,
+    "col_14": 1561,
+    "col_15": 320,
+    "col_16": 395,
+    "col_17": 1561,
+    "col_18": 320,
+    "row_num": 7
+  },
+  {
+    "col_1": "Пахота",
+    "col_2": "Многолетние злаковые травы",
+    "col_9": 15,
+    "col_10": 38,
+    "col_13": 15,
+    "col_14": 38,
+    "col_15": 52,
+    "col_16": 15,
+    "col_17": 38,
+    "col_18": 52,
+    "row_num": 8
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 9
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 10
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 11
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 12
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 13
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 14
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 15
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 16
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 17
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 18
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 19
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 20
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 21
+  }
+]
+
+Analyze and return ONLY ONE of these types:
+
+TYPE A - "daily_report" if:
+- Single enterprise/department report
+- Contains "Итого" columns for totals
+- Has operations and crops in rows
+- Typical filename pattern: "Таблица_для_дневного_отчета"
+
+TYPE B - "operational_report" if:
+- Multiple enterprises in rows
+- Operations spread across columns
+- Has sections like "Площадь, га"
+- Typical filename pattern: "Оперативная_отчетность"
+
+Return JSON:
+{
+  "table_type": "daily_report" or "operational_report"
+}

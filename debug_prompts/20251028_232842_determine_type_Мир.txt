@@ -1,0 +1,186 @@
+=== determine_type для Мир.xlsx ===
+Время: 2025-10-28T23:28:42.053032
+Размер: 3332 байт
+============================================================
+
+Determine the type of this Excel table.
+
+File: Мир.xlsx
+Data (first 20 rows):
+[
+  {
+    "col_1": "2025-07-19T00:00:00",
+    "row_num": 2
+  },
+  {
+    "col_1": "Наименование операции",
+    "col_2": "Наименование культуры",
+    "col_3": "Мир",
+    "col_5": "Итого",
+    "col_7": "Остаток",
+    "row_num": 3
+  },
+  {
+    "col_3": "за день",
+    "col_4": "от начала",
+    "col_5": "за день",
+    "col_6": "от начала",
+    "row_num": 4
+  },
+  {
+    "col_1": "Акарицидная обработка",
+    "col_2": "Свекла сахарная",
+    "col_3": 122,
+    "col_4": 683,
+    "col_5": 122,
+    "col_6": 683,
+    "col_7": 11,
+    "col_16": 122,
+    "col_17": 683,
+    "col_18": 11,
+    "row_num": 6
+  },
+  {
+    "col_1": "Дискование стерни",
+    "col_2": "Пшеница озимая товарная",
+    "col_3": 180,
+    "col_4": 1826,
+    "col_5": 180,
+    "col_6": 1826,
+    "col_7": 3883,
+    "col_16": 180,
+    "col_17": 1826,
+    "col_18": 3883,
+    "row_num": 7
+  },
+  {
+    "col_1": "1е дискование",
+    "col_2": "Свекла сахарная",
+    "col_3": 97,
+    "col_4": 181,
+    "col_5": 97,
+    "col_6": 181,
+    "col_7": 158,
+    "col_16": 97,
+    "col_17": 181,
+    "col_18": 158,
+    "row_num": 8
+  },
+  {
+    "col_1": "Дискование стерни",
+    "col_2": "Рапс",
+    "col_3": 113,
+    "col_4": 273,
+    "col_5": 113,
+    "col_6": 273,
+    "col_7": 0,
+    "col_16": 113,
+    "col_17": 273,
+    "col_18": 0,
+    "row_num": 9
+  },
+  {
+    "col_1": "Пахота",
+    "col_2": "Свекла сахарная",
+    "col_3": 20,
+    "col_4": 47,
+    "col_5": 20,
+    "col_6": 47,
+    "col_7": 3003,
+    "col_16": 20,
+    "col_17": 47,
+    "col_18": 3003,
+    "row_num": 10
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 11
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 12
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 13
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 14
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 15
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 16
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 17
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 18
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 19
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 20
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 21
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 22
+  }
+]
+
+Analyze and return ONLY ONE of these types:
+
+TYPE A - "daily_report" if:
+- Single enterprise/department report
+- Contains "Итого" columns for totals
+- Has operations and crops in rows
+- Typical filename pattern: "Таблица_для_дневного_отчета"
+
+TYPE B - "operational_report" if:
+- Multiple enterprises in rows
+- Operations spread across columns
+- Has sections like "Площадь, га"
+- Typical filename pattern: "Оперативная_отчетность"
+
+Return JSON:
+{
+  "table_type": "daily_report" or "operational_report"
+}

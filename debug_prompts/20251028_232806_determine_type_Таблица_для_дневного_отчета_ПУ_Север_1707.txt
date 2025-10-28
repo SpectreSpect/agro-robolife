@@ -1,0 +1,120 @@
+=== determine_type для Таблица_для_дневного_отчета_ПУ_Север_1707.xlsx ===
+Время: 2025-10-28T23:28:06.937996
+Размер: 2728 байт
+============================================================
+
+Determine the type of this Excel table.
+
+File: Таблица_для_дневного_отчета_ПУ_Север_1707.xlsx
+Data (first 20 rows):
+[
+  {
+    "col_1": "2025-07-17T00:00:00",
+    "row_num": 2
+  },
+  {
+    "col_1": "Наименование операции",
+    "col_2": "Наименование культуры",
+    "col_3": "ПУ Север",
+    "row_num": 3
+  },
+  {
+    "col_3": "Отделение 3",
+    "col_5": "Отделение 7",
+    "col_7": "Отделение 10",
+    "col_9": "Отделение 20",
+    "col_11": "Итого",
+    "col_13": "Остаток",
+    "row_num": 4
+  },
+  {
+    "col_3": "за день",
+    "col_4": "от начала",
+    "col_5": "за день",
+    "col_6": "от начала",
+    "col_7": "за день",
+    "col_8": "от начала",
+    "col_9": "за день",
+    "col_10": "от начала",
+    "col_11": "за день",
+    "col_12": "от начала",
+    "row_num": 5
+  },
+  {
+    "col_1": "Акарицидная обработка",
+    "col_2": "Свекла сахарная",
+    "col_4": 550,
+    "col_6": 695,
+    "col_7": 122,
+    "col_8": 683,
+    "col_10": 618,
+    "col_11": 122,
+    "col_12": 2546,
+    "col_13": 11,
+    "row_num": 6
+  },
+  {
+    "col_1": "Дискование стерни",
+    "col_2": "Пшеница озимая товарная",
+    "col_3": 110,
+    "col_4": 1474,
+    "col_5": 120,
+    "col_6": 1103,
+    "col_7": 180,
+    "col_8": 1826,
+    "col_10": 817,
+    "col_11": 410,
+    "col_12": 5220,
+    "col_13": 3883,
+    "row_num": 7
+  },
+  {
+    "col_1": "1е дискование",
+    "col_2": "Свекла сахарная",
+    "col_9": 97,
+    "col_10": 181,
+    "col_11": 97,
+    "col_12": 181,
+    "col_13": 158,
+    "row_num": 8
+  },
+  {
+    "col_1": "Дискование стерни",
+    "col_2": "Рапс",
+    "col_5": 113,
+    "col_6": 273,
+    "col_11": 113,
+    "col_12": 273,
+    "col_13": 0,
+    "row_num": 9
+  },
+  {
+    "col_1": "Пахота",
+    "col_2": "Свекла сахарная",
+    "col_9": 20,
+    "col_10": 47,
+    "col_11": 20,
+    "col_12": 47,
+    "col_13": 3003,
+    "row_num": 10
+  }
+]
+
+Analyze and return ONLY ONE of these types:
+
+TYPE A - "daily_report" if:
+- Single enterprise/department report
+- Contains "Итого" columns for totals
+- Has operations and crops in rows
+- Typical filename pattern: "Таблица_для_дневного_отчета"
+
+TYPE B - "operational_report" if:
+- Multiple enterprises in rows
+- Operations spread across columns
+- Has sections like "Площадь, га"
+- Typical filename pattern: "Оперативная_отчетность"
+
+Return JSON:
+{
+  "table_type": "daily_report" or "operational_report"
+}

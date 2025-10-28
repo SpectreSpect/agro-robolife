@@ -1,0 +1,401 @@
+=== extract_data для Кропоткинское[1].xlsx ===
+Время: 2025-10-28T23:27:22.564714
+Размер: 7926 байт
+============================================================
+
+Extract agricultural data from DAILY REPORT table.
+
+File: Кропоткинское[1].xlsx
+Sheet: Кропоткинское
+
+Data (first 50 rows):
+[
+  {
+    "col_1": "2025-07-19T00:00:00",
+    "row_num": 2
+  },
+  {
+    "col_1": "Наименование операции",
+    "col_2": "Наименование культуры",
+    "col_3": "Кропоткинское",
+    "col_5": "Итого",
+    "col_7": "Остаток",
+    "row_num": 3
+  },
+  {
+    "col_3": "за день",
+    "col_4": "от начала",
+    "col_5": "за день",
+    "col_6": "от начала",
+    "row_num": 4
+  },
+  {
+    "col_1": "Дискование стерни",
+    "col_2": "Пшеница озимая товарная",
+    "col_3": 136,
+    "col_4": 1826,
+    "col_5": 136,
+    "col_6": 1826,
+    "col_7": 2788,
+    "col_16": 136,
+    "col_17": 1826,
+    "col_18": 2788,
+    "row_num": 6
+  },
+  {
+    "col_1": "КАС",
+    "col_2": "Свекла сахарная",
+    "col_3": 403,
+    "col_4": 115,
+    "col_5": 403,
+    "col_6": 115,
+    "col_7": 1259,
+    "col_16": 403,
+    "col_17": 115,
+    "col_18": 1259,
+    "row_num": 7
+  },
+  {
+    "col_1": "Пахота",
+    "col_2": "Свекла сахарная",
+    "col_3": 21,
+    "col_4": 104,
+    "col_5": 21,
+    "col_6": 104,
+    "col_7": 2946,
+    "col_16": 21,
+    "col_17": 104,
+    "col_18": 2946,
+    "row_num": 8
+  },
+  {
+    "col_1": "Акарицидная обработка",
+    "col_2": "Соя товарная",
+    "col_3": 262,
+    "col_4": 262,
+    "col_5": 262,
+    "col_6": 262,
+    "col_7": 2056,
+    "col_16": 262,
+    "col_17": 262,
+    "col_18": 2056,
+    "row_num": 9
+  },
+  {
+    "col_1": "Внесение мин удобрений",
+    "col_2": "Свекла сахарная",
+    "col_3": 132,
+    "col_4": 219,
+    "col_5": 132,
+    "col_6": 219,
+    "col_7": 2831,
+    "col_16": 132,
+    "col_17": 219,
+    "col_18": 2831,
+    "row_num": 10
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 11
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 12
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 13
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 14
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 15
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 16
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 17
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 18
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 19
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 20
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 21
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 22
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 23
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 24
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 25
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 26
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 27
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 28
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 29
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 30
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 31
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 32
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 33
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 34
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 35
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 36
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 37
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 38
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 39
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 40
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 41
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 42
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 43
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 44
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 45
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 46
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 47
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 48
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 49
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 50
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 51
+  },
+  {
+    "col_16": 0,
+    "col_17": 0,
+    "col_18": 0,
+    "row_num": 52
+  }
+]
+
+This is a DAILY REPORT with single enterprise. Extract data as follows:
+
+1. Find date in header (usually in first 3 rows, cell might contain date) or extract from filename pattern _DDMM.xlsx
+2. Find the department or enterprise name:
+   * Look in the header area (the first 3 rows).
+   * The name cannot be empty.
+   * It should represent a company, organization, or department.
+   * Ignore any text that looks like a report title or description, such as:
+     “Отчет”, “План”, “Свод”, “Данные”, “по”, “за”, “на”, “таблица”, “результаты”, “Отделение”.
+   * The name is typically short (1–4 words) and may include forms of ownership like “ПУ”, “ООО”, “ЗАО”, or “АО”.
+   * Return only the department or enterprise name — clean text without extra words or formatting.
+   * Examples: “ПУ Север”, “Агрохолдинг Рассвет”, “ООО Колос”, ”Прогресс”, ”Мир”.
+3. Find header row with column names (look for "Итого", "Остаток" columns)
+4. Identify columns:
+   - "Итого" columns (there are usually TWO adjacent "Итого" columns)
+   - First "Итого" = work per day (объем работ за день)
+   - Second "Итого" = work from start (объем работ с начала)
+   - "Остаток" = remaining work (оставшийся объем)
+5. For EACH data row (after header row):
+   - operation_name = first column value (название операции)
+   - crop_name = second column value (название культуры)
+   - work_per_day = value from first "Итого" column
+   - work_from_start = value from second "Итого" column
+   - remaining_work = value from "Остаток" column
+   - Calculate completion_percent = work_from_start / (work_from_start + remaining_work) if denominator > 0, else 0
+
+RETURN JSON:
+{
+  "records": [
+    {
+      "operation_date": "YYYY-MM-DD",
+      "department_name": "string",
+      "operation_name": "string",
+      "crop_name": "string",
+      "work_per_day": number,
+      "work_from_start": number,
+      "remaining_work": number,
+      "completion_percent": number (0 to 1)
+    }
+  ]
+}
+
+CRITICAL RULES:
+1. Skip header rows (first 5 rows typically)
+2. Skip summary rows starting with "Итого по..."
+3. Skip empty rows
+4. All numeric values must be numbers, not strings
+5. Dates in YYYY-MM-DD format
+6. If field unknown, use null for strings or 0 for numbers
+7. Return ALL data rows from entire table
+8. Extract work values ONLY from "Итого" columns (суммарные значения по всем агрегатам)

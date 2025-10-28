@@ -12,12 +12,12 @@ logger = logging.getLogger(__name__)
 class LLMClient:
     
     def __init__(self, api_key: str, base_url: str = "https://gptunnel.ru/v1"):
-        # Timeout 30 секунд БЕЗ retries - если API тормозит, лучше сразу использовать fallback
+        # Timeout 60 секунд БЕЗ retries - если API тормозит, лучше сразу использовать fallback
         # Retries бессмысленны при slow API - это просто 3x timeout
         self.client = OpenAI(
             api_key=api_key,
             base_url=base_url,
-            timeout=30.0,  # 30 секунд - достаточно для нормальных ответов
+            timeout=60.0,  # 60 секунд - увеличен для медленных соединений с API
             max_retries=0   # БЕЗ retries - если timeout, сразу fallback на алгоритм
         )
         self.model = "gpt-4o-mini"
@@ -26,7 +26,7 @@ class LLMClient:
         
         # Папка для сохранения промптов (для отладки)
         self.prompts_dir = Path("debug_prompts")
-        self.save_prompts = True  # Флаг для включения/выключения сохранения
+        self.save_prompts = False  # Флаг для включения/выключения сохранения (отключено по умолчанию)
     
     def _save_prompt(self, prompt: str, file_name: str, request_type: str):
         """Сохраняет промпт в файл для отладки"""
