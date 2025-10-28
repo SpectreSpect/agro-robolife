@@ -3,6 +3,8 @@ import logging
 import time
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
+from pathlib import Path
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,35 @@ class LLMClient:
         self.model = "gpt-4o-mini"
         self.last_request_time = 0
         self.min_delay_between_requests = 3.0  # 3 секунды между запросами для избежания rate limiting
+        
+        # Папка для сохранения промптов (для отладки)
+        self.prompts_dir = Path("debug_prompts")
+        self.save_prompts = True  # Флаг для включения/выключения сохранения
+    
+    def _save_prompt(self, prompt: str, file_name: str, request_type: str):
+        """Сохраняет промпт в файл для отладки"""
+        if not self.save_prompts:
+            return
+        
+        try:
+            self.prompts_dir.mkdir(exist_ok=True)
+            
+            # Создаем уникальное имя файла с временной меткой
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_filename = file_name.replace(".xlsx", "").replace("[", "").replace("]", "")
+            prompt_file = self.prompts_dir / f"{timestamp}_{request_type}_{safe_filename}.txt"
+            
+            with open(prompt_file, "w", encoding="utf-8") as f:
+                f.write(f"=== {request_type} для {file_name} ===\n")
+                f.write(f"Время: {datetime.now().isoformat()}\n")
+                f.write(f"Размер: {len(prompt.encode('utf-8'))} байт\n")
+                f.write("="*60 + "\n\n")
+                f.write(prompt)
+            
+            logger.debug(f"💾 Промпт сохранён: {prompt_file.name}")
+            
+        except Exception as e:
+            logger.warning(f"Не удалось сохранить промпт: {e}")
     
     def _wait_for_rate_limit(self):
         """Ждет минимальную задержку между запросами для избежания rate limiting"""
@@ -78,6 +109,9 @@ Return JSON:
             prompt_size = len(prompt.encode('utf-8'))
             logger.info(f"📊 LLM запрос определения типа для {file_name}: {prompt_size} байт ({len(rows_sample)} строк данных)")
             
+            # Сохраняем промпт для отладки
+            self._save_prompt(prompt, file_name, "determine_type")
+            
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -126,6 +160,9 @@ Return JSON:
             prompt_size = len(prompt.encode('utf-8'))
             rows_count = len(sheet_data.get("rows", [])[:50])
             logger.info(f"📊 LLM запрос парсинга данных для {file_name}: {prompt_size} байт ({rows_count} строк данных)")
+            
+            # Сохраняем промпт для отладки
+            self._save_prompt(prompt, file_name, "extract_data")
             
             response = self.client.chat.completions.create(
                 model=self.model,
