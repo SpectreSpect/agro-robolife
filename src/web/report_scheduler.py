@@ -89,9 +89,27 @@ class ReportScheduler:
             self._started = False
             logger.info("Планировщик отчетов остановлен")
     
-    async def _scheduled_generation(self):
-        """Wrapper для автоматической генерации по расписанию"""
-        await self._generate_report(manual=False)
+    def _scheduled_generation(self):
+        """Wrapper для автоматической генерации по расписанию (синхронный)"""
+        logger.info("⏰ Запуск автоматической генерации по расписанию")
+        try:
+            # Получаем текущий event loop или создаем новый
+            try:
+                loop = asyncio.get_running_loop()
+                # Если event loop уже запущен, создаем task
+                asyncio.create_task(self._generate_report(manual=False))
+                logger.info("Task создан в текущем event loop")
+            except RuntimeError:
+                # Если нет активного loop, запускаем синхронно
+                logger.info("Нет активного event loop, создаем новый")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(self._generate_report(manual=False))
+                finally:
+                    loop.close()
+        except Exception as e:
+            logger.error(f"Ошибка при автоматической генерации: {e}", exc_info=True)
     
     def _load_active_schedule(self):
         """Загрузка активного расписания из БД"""
@@ -120,14 +138,16 @@ class ReportScheduler:
             
             if config.schedule_type == "one_time":
                 # Разовая задача
-                if config.scheduled_time and config.scheduled_time > datetime.now():
-                    self.scheduler.add_job(
+                now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+                if config.scheduled_time and config.scheduled_time > now_utc:
+                    job = self.scheduler.add_job(
                         self._scheduled_generation,
                         trigger=DateTrigger(run_date=config.scheduled_time),
                         id="report_generation",
                         replace_existing=True
                     )
-                    logger.info(f"Разовая задача запланирована на {config.scheduled_time}")
+                    logger.info(f"✅ Разовая задача запланирована на {config.scheduled_time}")
+                    logger.info(f"   Job ID: {job.id}, Next run: {job.next_run_time}")
                 else:
                     logger.warning("Время разовой задачи в прошлом или не указано")
                     
@@ -135,13 +155,14 @@ class ReportScheduler:
                 # Периодическая задача
                 if config.periodic_time:
                     hour, minute = map(int, config.periodic_time.split(":"))
-                    self.scheduler.add_job(
+                    job = self.scheduler.add_job(
                         self._scheduled_generation,
                         trigger=CronTrigger(hour=hour, minute=minute),
                         id="report_generation",
                         replace_existing=True
                     )
-                    logger.info(f"Периодическая задача запланирована на {config.periodic_time} ежедневно")
+                    logger.info(f"✅ Периодическая задача запланирована на {config.periodic_time} ежедневно (UTC)")
+                    logger.info(f"   Job ID: {job.id}, Next run: {job.next_run_time}")
                 else:
                     logger.warning("Время периодической задачи не указано")
             
