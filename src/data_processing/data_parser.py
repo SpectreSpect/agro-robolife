@@ -636,18 +636,31 @@ class HybridParser:
             try:
                 table_type = self.llm_client.determine_table_type(sheet_data, self.file_path.name)
             except Exception as llm_error:
-                logger.warning(f"LLM не смог определить тип таблицы: {llm_error}")
-                logger.info("Пробуем алгоритмический парсер для дневного отчёта как fallback")
-                # Fallback: пробуем алгоритмический парсер для дневного отчёта
-                algo_parser = DailyReportAlgorithmicParser(self.file_path)
-                if algo_parser.validate_structure(ws):
-                    logger.info(f"✓ Fallback успешен: используется алгоритмический парсер")
+                logger.warning(f"⚠️ LLM timeout/ошибка при определении типа: {llm_error}")
+                logger.info("🔄 Fallback: пробуем алгоритмические парсеры")
+                
+                # Пробуем алгоритмический парсер для дневного отчёта
+                algo_daily = DailyReportAlgorithmicParser(self.file_path)
+                if algo_daily.validate_structure(ws):
+                    logger.info(f"✅ Успех! Используется алгоритмический парсер (дневной отчёт)")
                     wb.close()
-                    return algo_parser.parse()
-                else:
-                    # Если алгоритмический не подошёл, пробуем LLM парсер напрямую
-                    logger.info(f"Fallback на LLM парсер для дневного отчёта")
-                    table_type = "daily_report"  # Предполагаем дневной отчёт
+                    return algo_daily.parse()
+                
+                # Пробуем алгоритмический парсер для оперативной отчётности
+                try:
+                    logger.info("Пробуем парсер оперативной отчётности...")
+                    wb.close()
+                    parser_operational = OperationalReportParser(self.file_path)
+                    result = parser_operational.parse()
+                    if result and len(result) > 0:
+                        logger.info(f"✅ Успех! Используется парсер оперативной отчётности")
+                        return result
+                except Exception:
+                    pass
+                
+                # Если ничего не подошло, пробуем LLM парсер как последнюю попытку
+                logger.info(f"⚠️ Алгоритмические парсеры не подошли, используем LLM парсер")
+                table_type = "daily_report"  # Предполагаем дневной отчёт
             
             if table_type == "operational_report":
                 logger.info(f"Тип: оперативная отчётность → используется алгоритмический парсер")

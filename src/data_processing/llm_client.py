@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
 
@@ -9,13 +10,13 @@ logger = logging.getLogger(__name__)
 class LLMClient:
     
     def __init__(self, api_key: str, base_url: str = "https://gptunnel.ru/v1"):
-        # Увеличиваем timeout до 90 секунд для медленных ответов LLM
-        # (иногда gptunnel.ru может быть медленным)
+        # Timeout 30 секунд БЕЗ retries - если API тормозит, лучше сразу использовать fallback
+        # Retries бессмысленны при slow API - это просто 3x timeout
         self.client = OpenAI(
             api_key=api_key,
             base_url=base_url,
-            timeout=90.0,  # 90 секунд вместо дефолтных ~10
-            max_retries=2   # 2 попытки при ошибках (с увеличенным timeout меньше retries)
+            timeout=30.0,  # 30 секунд - достаточно для нормальных ответов
+            max_retries=0   # БЕЗ retries - если timeout, сразу fallback на алгоритм
         )
         self.model = "gpt-4o-mini"
     
@@ -25,15 +26,19 @@ class LLMClient:
         file_name: str
     ) -> str:
         
+        start_time = time.time()
         try:
             rows_data = sheet_data.get("rows", [])
             rows_sample = rows_data[:20] if len(rows_data) > 20 else rows_data
             
+            # Сокращаем данные для быстрого определения типа (только первые 10 строк)
+            rows_sample_short = rows_data[:10] if len(rows_data) > 10 else rows_data
+            
             prompt = f"""Determine the type of this Excel table.
 
 File: {file_name}
-Data (first 20 rows):
-{json.dumps(rows_sample, ensure_ascii=False, indent=2)}
+Data (first 10 rows):
+{json.dumps(rows_sample_short, ensure_ascii=False, indent=2)}
 
 Analyze and return ONLY ONE of these types:
 
@@ -55,6 +60,10 @@ Return JSON:
 }}
 """
             
+            # Логируем размер промпта для отладки
+            prompt_size = len(prompt.encode('utf-8'))
+            logger.debug(f"📊 LLM запрос для {file_name}: {prompt_size} байт, {len(rows_sample_short)} строк")
+            
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -75,12 +84,14 @@ Return JSON:
             result = json.loads(content)
             table_type = result.get("table_type", "daily_report")
             
-            logger.info(f"Определен тип таблицы {file_name}: {table_type}")
+            elapsed = time.time() - start_time
+            logger.info(f"Определен тип таблицы {file_name}: {table_type} (за {elapsed:.1f}с)")
             return table_type
             
         except Exception as e:
+            elapsed = time.time() - start_time
             error_type = type(e).__name__
-            logger.error(f"Ошибка при определении типа таблицы {file_name}: {error_type}: {e}")
+            logger.error(f"Ошибка при определении типа таблицы {file_name}: {error_type}: {e} (после {elapsed:.1f}с)")
             logger.info(f"Используется дефолтный тип 'daily_report' для {file_name}")
             return "daily_report"
     
@@ -90,8 +101,14 @@ Return JSON:
         file_name: str
     ) -> List[Dict[str, Any]]:
         
+        start_time = time.time()
         try:
             prompt = self._build_extraction_prompt(sheet_data, file_name)
+            
+            # Логируем размер промпта для отладки
+            prompt_size = len(prompt.encode('utf-8'))
+            rows_count = len(sheet_data.get("rows", [])[:30])
+            logger.debug(f"📊 LLM запрос для парсинга {file_name}: {prompt_size} байт, {rows_count} строк")
             
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -112,15 +129,17 @@ Return JSON:
             content = response.choices[0].message.content
             result = json.loads(content)
             
+            elapsed = time.time() - start_time
             if "records" in result:
-                logger.info(f"Извлечено {len(result['records'])} записей через LLM из {file_name}")
+                logger.info(f"Извлечено {len(result['records'])} записей через LLM из {file_name} (за {elapsed:.1f}с)")
                 return result["records"]
             else:
-                logger.warning(f"LLM вернул ответ без поля 'records' для {file_name}")
+                logger.warning(f"LLM вернул ответ без поля 'records' для {file_name} (за {elapsed:.1f}с)")
                 return []
                 
         except Exception as e:
-            logger.error(f"Ошибка при обращении к LLM для {file_name}: {e}")
+            elapsed = time.time() - start_time
+            logger.error(f"Ошибка при обращении к LLM для {file_name}: {e} (после {elapsed:.1f}с)")
             return []
     
     def _build_extraction_prompt(
@@ -132,14 +151,15 @@ Return JSON:
         rows_data = sheet_data.get("rows", [])
         sheet_name = sheet_data.get("sheet_name", "Unknown")
         
-        rows_sample = rows_data[:50] if len(rows_data) > 50 else rows_data
+        # Сокращаем до 30 строк для ускорения (обычно данных меньше)
+        rows_sample = rows_data[:30] if len(rows_data) > 30 else rows_data
         
         prompt = f"""Extract agricultural data from DAILY REPORT table.
 
 File: {file_name}
 Sheet: {sheet_name}
 
-Data (first 50 rows):
+Data (first 30 rows):
 {json.dumps(rows_sample, ensure_ascii=False, indent=2)}
 
 This is a DAILY REPORT with single enterprise. Extract data as follows:
