@@ -207,7 +207,12 @@ async function uploadFiles(files) {
         
     } catch (error) {
         console.error('Ошибка:', error);
-        alert('Ошибка при загрузке файлов: ' + error.message);
+        // Проверяем на сетевую ошибку
+        if (error.message && error.message.includes('Failed to fetch')) {
+            alert('⚠️ Проблема с подключением. Попробуйте ещё раз.');
+        } else {
+            alert('Ошибка при загрузке файлов: ' + error.message);
+        }
     }
 }
 
@@ -542,14 +547,22 @@ async function generateNow() {
     // Проверяем, не идет ли уже генерация
     try {
         const statusResponse = await fetch('/api/generation-status');
-        const statusData = await statusResponse.json();
         
-        if (statusData.is_generating) {
-            alert('⏳ Подождите, идёт генерация отчёта...');
-            return;
+        if (!statusResponse.ok) {
+            console.warn('Не удалось проверить статус генерации');
+            // Продолжаем выполнение, т.к. это не критично
+        } else {
+            const statusData = await statusResponse.json();
+            
+            if (statusData.is_generating) {
+                alert('⏳ Подождите, идёт генерация отчёта...');
+                return;
+            }
         }
     } catch (error) {
-        console.error('Ошибка проверки статуса:', error);
+        // Молча игнорируем ошибки проверки статуса
+        console.debug('Не удалось проверить статус генерации:', error.message);
+        // Продолжаем выполнение
     }
     
     openModal(
@@ -573,8 +586,16 @@ async function generateNow() {
                 closeModal();
                 
             } catch (error) {
-                console.error('Ошибка:', error);
-                alert('Ошибка при запуске генерации: ' + error.message);
+                // Проверяем тип ошибки
+                if (error.message && error.message.includes('Failed to fetch')) {
+                    // Сетевая ошибка - молча игнорируем (может быть при перезагрузке)
+                    console.debug('Сетевая ошибка при запуске генерации:', error.message);
+                    closeModal();
+                } else {
+                    // Реальная ошибка - показываем пользователю
+                    console.error('Ошибка при запуске генерации:', error);
+                    alert('Ошибка при запуске генерации: ' + error.message);
+                }
             }
         }
     );
