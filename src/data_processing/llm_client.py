@@ -19,6 +19,20 @@ class LLMClient:
             max_retries=0   # БЕЗ retries - если timeout, сразу fallback на алгоритм
         )
         self.model = "gpt-4o-mini"
+        self.last_request_time = 0
+        self.min_delay_between_requests = 3.0  # 3 секунды между запросами для избежания rate limiting
+    
+    def _wait_for_rate_limit(self):
+        """Ждет минимальную задержку между запросами для избежания rate limiting"""
+        current_time = time.time()
+        time_since_last_request = current_time - self.last_request_time
+        
+        if time_since_last_request < self.min_delay_between_requests:
+            delay = self.min_delay_between_requests - time_since_last_request
+            logger.info(f"⏳ Пауза {delay:.1f}с для избежания rate limiting API")
+            time.sleep(delay)
+        
+        self.last_request_time = time.time()
     
     def determine_table_type(
         self, 
@@ -28,6 +42,9 @@ class LLMClient:
         
         start_time = time.time()
         try:
+            # Ждем минимальную задержку между запросами
+            self._wait_for_rate_limit()
+            
             rows_data = sheet_data.get("rows", [])
             rows_sample = rows_data[:20] if len(rows_data) > 20 else rows_data
             
@@ -100,6 +117,9 @@ Return JSON:
         
         start_time = time.time()
         try:
+            # Ждем минимальную задержку между запросами
+            self._wait_for_rate_limit()
+            
             prompt = self._build_extraction_prompt(sheet_data, file_name)
             
             # Логируем размер промпта для отладки

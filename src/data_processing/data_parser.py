@@ -306,6 +306,8 @@ class DailyReportAlgorithmicParser:
                 
                 operation_str = str(operation_val).strip()
                 if not operation_str or operation_str.lower().startswith("итого"):
+                    if records_count == 0:  # Логируем только для первых строк
+                        logger.debug(f"  Строка {row_idx}: '{operation_str[:30]}' - пропускаем (пустая или 'Итого')")
                     continue  # Строка "Итого" - пропускаем
                 
                 # Извлекаем данные
@@ -327,7 +329,8 @@ class DailyReportAlgorithmicParser:
                 
                 # Пропускаем строки без данных
                 if work_per_day == 0 and work_from_start == 0 and remaining_work == 0:
-                    logger.debug(f"  Строка {row_idx}: все числовые значения равны 0, пропускаем")
+                    if records_count == 0 and row_idx <= data_start_row + 5:  # Первые 5 строк
+                        logger.info(f"  ❌ Строка {row_idx}: '{operation_str[:30]}' - все значения 0 (itogo1={itogo1_val}, itogo2={itogo2_val}, остаток={ostatok_val})")
                     continue
                 
                 # Вычисляем процент выполнения
