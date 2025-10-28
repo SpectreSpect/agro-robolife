@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import logging
+import json
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -165,6 +166,11 @@ async def upload_files(files: List[UploadFile] = File(...)):
             uploaded_files.append(file_path.name)
             logger.info(f"Загружен файл: {file_path.name}")
 
+        # Уведомляем всех клиентов об изменении файлов
+        await ws_manager.broadcast({
+            "type": "files_updated"
+        })
+        
         return {
             "files": uploaded_files,
             "message": f"Загружено {len(uploaded_files)} файлов"
@@ -186,6 +192,11 @@ async def delete_file(filename: str):
         
         file_path.unlink()
         logger.info(f"Удален файл: {filename}")
+        
+        # Уведомляем всех клиентов об изменении файлов
+        await ws_manager.broadcast({
+            "type": "files_updated"
+        })
         
         return {"message": "Файл удален"}
     
@@ -215,6 +226,11 @@ async def rename_file(filename: str, request: FileRenameRequest):
         
         old_path.rename(new_path)
         logger.info(f"Файл переименован: {filename} -> {request.new_name}")
+        
+        # Уведомляем всех клиентов об изменении файлов
+        await ws_manager.broadcast({
+            "type": "files_updated"
+        })
         
         return {"message": "Файл переименован", "new_name": request.new_name}
 
@@ -287,16 +303,19 @@ async def set_schedule(request: ScheduleRequest):
             if not request.scheduled_time:
                 raise HTTPException(status_code=400, detail="Не указано время для разовой задачи")
             
-            # Парсим ISO время
+            # Парсим ISO время (приходит в UTC от фронтенда)
             scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
             scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
         
+            # Убираем timezone info, но оставляем время в UTC (не конвертируем в локальное!)
             if scheduled_time_utc.tzinfo:
-                scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
+                scheduled_time = scheduled_time_utc.replace(tzinfo=None)
             else:
                 scheduled_time = scheduled_time_utc
         
-            if scheduled_time <= datetime.now():
+            # Сравниваем с текущим UTC временем
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            if scheduled_time <= now_utc:
                 raise HTTPException(status_code=400, detail="Время должно быть в будущем")
         
         elif request.schedule_type == "periodic":
@@ -320,6 +339,10 @@ async def set_schedule(request: ScheduleRequest):
         )
         
         if success:
+            # Уведомляем всех подключенных клиентов об изменении расписания
+            await ws_manager.broadcast({
+                "type": "schedule_updated"
+            })
             return {"message": "Расписание установлено"}
         else:
             raise HTTPException(status_code=500, detail="Ошибка при установке расписания")
@@ -338,6 +361,10 @@ async def cancel_schedule():
         success = scheduler.cancel_schedule()
         
         if success:
+            # Уведомляем всех подключенных клиентов об отмене расписания
+            await ws_manager.broadcast({
+                "type": "schedule_updated"
+            })
             return {"message": "Расписание отменено"}
         else:
             raise HTTPException(status_code=500, detail="Ошибка при отмене расписания")

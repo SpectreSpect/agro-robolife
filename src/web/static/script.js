@@ -1,5 +1,6 @@
 // Глобальные переменные
 let countdownInterval = null;
+let countdownTargetTime = null;  // Целевое время для countdown (вычисляется локально)
 let currentRenamingFile = null;
 let ws = null;
 let wsReconnectTimeout = null;
@@ -7,10 +8,22 @@ let wsReconnectTimeout = null;
 // Глобальный обработчик необработанных Promise rejection
 // Предотвращает показ alert "Failed to fetch" при сетевых ошибках
 window.addEventListener('unhandledrejection', function(event) {
-    // Молча логируем ошибку
-    console.debug('Необработанная ошибка Promise:', event.reason);
-    // Предотвращаем стандартное поведение браузера (показ alert)
-    event.preventDefault();
+    const reason = event.reason;
+    
+    // Игнорируем сетевые ошибки (часто возникают при перезагрузке страницы)
+    if (reason && (
+        (reason.message && reason.message.includes('Failed to fetch')) ||
+        (reason.message && reason.message.includes('NetworkError')) ||
+        (reason.name === 'AbortError')
+    )) {
+        console.debug('Игнорируем сетевую ошибку:', reason.message || reason);
+        event.preventDefault();
+        return;
+    }
+    
+    // Для других ошибок логируем подробно
+    console.warn('Необработанная ошибка Promise:', reason);
+    event.preventDefault(); // Предотвращаем дефолтное поведение браузера
 });
 
 // Инициализация при загрузке страницы
@@ -22,7 +35,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadReports();
     setDefaultScheduleTime();
     startCountdownUpdate();
-    connectWebSocket();
+    connectWebSocket();  // WebSocket для real-time обновлений (генерация + расписание)
     
     // Проверяем статус генерации с небольшой задержкой
     // чтобы страница и WebSocket успели инициализироваться
@@ -65,6 +78,21 @@ function connectWebSocket() {
 }
 
 function handleWebSocketMessage(data) {
+    // Обработка уведомления об изменении файлов
+    if (data.type === 'files_updated') {
+        console.log('Файлы обновлены другим пользователем');
+        loadFiles();  // Перезагружаем список файлов
+        return;
+    }
+    
+    // Обработка уведомления об изменении расписания
+    if (data.type === 'schedule_updated') {
+        console.log('Расписание обновлено другим пользователем');
+        loadSchedule();  // Перезагружаем расписание
+        return;
+    }
+    
+    // Обработка статуса генерации отчёта
     const status = data.status;
     
     if (status === 'started') {
@@ -498,6 +526,9 @@ async function loadSchedule() {
                 const scheduledDate = new Date(schedule.scheduled_time);
                 html += `<p><strong>Тип:</strong> Разовая задача</p>`;
                 html += `<p><strong>Дата и время:</strong> ${scheduledDate.toLocaleString('ru-RU')}</p>`;
+                
+                // Сохраняем целевое время для countdown
+                countdownTargetTime = scheduledDate;
             } else if (schedule.schedule_type === 'periodic') {
                 // Конвертируем UTC время обратно в локальное для отображения
                 // schedule.periodic_time = "11:00" (UTC)
@@ -512,6 +543,17 @@ async function loadSchedule() {
                 
                 html += `<p><strong>Тип:</strong> Периодическая задача (ежедневно)</p>`;
                 html += `<p><strong>Время:</strong> ${localTimeStr}</p>`;
+                
+                // Вычисляем следующее срабатывание для countdown
+                let nextRun = new Date();
+                nextRun.setHours(localHours, localMinutes, 0, 0);
+                
+                if (nextRun <= new Date()) {
+                    // Если время уже прошло сегодня, берем завтра
+                    nextRun.setDate(nextRun.getDate() + 1);
+                }
+                
+                countdownTargetTime = nextRun;
             }
             
             html += `<p><strong>Email:</strong> ${schedule.recipient_email || 'Не указан'}</p>`;
@@ -521,6 +563,7 @@ async function loadSchedule() {
             statusDiv.innerHTML = html;
     } else {
             statusDiv.innerHTML = '<div class="schedule-inactive"><p>❌ Расписание не установлено</p></div>';
+            countdownTargetTime = null;  // Сбрасываем countdown
         }
         
     } catch (error) {
@@ -694,33 +737,31 @@ function startCountdownUpdate() {
     countdownInterval = setInterval(updateCountdown, 1000);
 }
 
-async function updateCountdown() {
+function updateCountdown() {
     const countdownText = document.getElementById('countdownText');
     
-    if (!countdownText) {
+    if (!countdownText || !countdownTargetTime) {
         return;
     }
     
-    try {
-        const response = await fetch('/api/schedule/countdown');
-        if (!response.ok) {
-            return;
-        }
+    // Вычисляем разницу локально (без запросов к серверу)
+    const now = new Date();
+    const diffMs = countdownTargetTime - now;
+    const secondsLeft = Math.floor(diffMs / 1000);
+    
+    if (secondsLeft > 0) {
+        const hours = Math.floor(secondsLeft / 3600);
+        const minutes = Math.floor((secondsLeft % 3600) / 60);
+        const seconds = secondsLeft % 60;
         
-        const data = await response.json();
-        
-        if (data.active && data.seconds_left > 0) {
-            const hours = Math.floor(data.seconds_left / 3600);
-            const minutes = Math.floor((data.seconds_left % 3600) / 60);
-            const seconds = data.seconds_left % 60;
-            
-            countdownText.innerHTML = `<strong>⏳ До генерации отчета:</strong> ${hours}ч ${minutes}м ${seconds}с`;
-        } else if (data.active && data.seconds_left <= 0) {
-            countdownText.innerHTML = '<strong>⏳ Генерация отчета...</strong>';
-        }
-        
-    } catch (error) {
-        // Игнорируем ошибки обновления таймера
+        countdownText.innerHTML = `<strong>⏳ До генерации отчета:</strong> ${hours}ч ${minutes}м ${seconds}с`;
+    } else if (secondsLeft > -60) {
+        // В течение минуты после срабатывания показываем "Генерация..."
+        countdownText.innerHTML = '<strong>⏳ Генерация отчета...</strong>';
+    } else {
+        // Если прошло больше минуты, перезагружаем расписание
+        // (возможно уже завершилась и расписание обновилось)
+        loadSchedule();
     }
 }
 

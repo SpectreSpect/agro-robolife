@@ -22,7 +22,8 @@ class ReportScheduler:
     """Планировщик для автоматической генерации отчетов"""
     
     def __init__(self, shared_files_dir: Path, archived_files_dir: Path, output_dir: Path, template_path: Path):
-        self.scheduler = AsyncIOScheduler()
+        # Настраиваем планировщик на работу в UTC timezone
+        self.scheduler = AsyncIOScheduler(timezone=pytz.utc)
         self.shared_files_dir = shared_files_dir
         self.archived_files_dir = archived_files_dir
         self.output_dir = output_dir
@@ -48,7 +49,10 @@ class ReportScheduler:
         """Отправить статус генерации всем подключенным клиентам"""
         if self.ws_manager:
             message = {"status": status, **kwargs}
+            logger.info(f"Broadcasting WebSocket: {message}")
             await self.ws_manager.broadcast(message)
+        else:
+            logger.warning("WebSocket manager не установлен, broadcast пропущен")
     
     def _broadcast_status_sync(self, status: str, **kwargs):
         """Синхронная обертка для broadcast (для использования в синхронном коде)"""
@@ -86,6 +90,23 @@ class ReportScheduler:
             self._started = False
             logger.info("Планировщик отчетов остановлен")
     
+    def _scheduled_generation(self):
+        """Wrapper для автоматической генерации по расписанию (синхронный)"""
+        logger.info("⏰ Запуск автоматической генерации по расписанию")
+        try:
+            # Всегда используем новый event loop для надежности
+            logger.info("Создаем новый event loop для генерации")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self._generate_report(manual=False))
+                logger.info("Генерация завершена успешно")
+            finally:
+                loop.close()
+                logger.info("Event loop закрыт")
+        except Exception as e:
+            logger.error(f"Ошибка при автоматической генерации: {e}", exc_info=True)
+    
     def _load_active_schedule(self):
         """Загрузка активного расписания из БД"""
         db = SessionLocal()
@@ -113,14 +134,19 @@ class ReportScheduler:
             
             if config.schedule_type == "one_time":
                 # Разовая задача
-                if config.scheduled_time and config.scheduled_time > datetime.now():
-                    self.scheduler.add_job(
-                        self._generate_report,
-                        trigger=DateTrigger(run_date=config.scheduled_time),
+                now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+                if config.scheduled_time and config.scheduled_time > now_utc:
+                    # Добавляем UTC timezone к naive datetime для планировщика
+                    scheduled_time_utc = config.scheduled_time.replace(tzinfo=timezone.utc)
+                    
+                    job = self.scheduler.add_job(
+                        self._scheduled_generation,
+                        trigger=DateTrigger(run_date=scheduled_time_utc),
                         id="report_generation",
                         replace_existing=True
                     )
-                    logger.info(f"Разовая задача запланирована на {config.scheduled_time}")
+                    logger.info(f"✅ Разовая задача запланирована на {config.scheduled_time} UTC")
+                    logger.info(f"   Job ID: {job.id}, Next run: {job.next_run_time}")
                 else:
                     logger.warning("Время разовой задачи в прошлом или не указано")
                     
@@ -128,13 +154,15 @@ class ReportScheduler:
                 # Периодическая задача
                 if config.periodic_time:
                     hour, minute = map(int, config.periodic_time.split(":"))
-                    self.scheduler.add_job(
-                        self._generate_report,
-                        trigger=CronTrigger(hour=hour, minute=minute),
+                    # Явно указываем UTC timezone для CronTrigger
+                    job = self.scheduler.add_job(
+                        self._scheduled_generation,
+                        trigger=CronTrigger(hour=hour, minute=minute, timezone=pytz.utc),
                         id="report_generation",
                         replace_existing=True
                     )
-                    logger.info(f"Периодическая задача запланирована на {config.periodic_time} ежедневно")
+                    logger.info(f"✅ Периодическая задача запланирована на {config.periodic_time} ежедневно (UTC)")
+                    logger.info(f"   Job ID: {job.id}, Next run: {job.next_run_time}")
                 else:
                     logger.warning("Время периодической задачи не указано")
             
@@ -238,7 +266,9 @@ class ReportScheduler:
         try:
             # Устанавливаем флаг генерации и уведомляем клиентов
             self.is_generating = True
+            logger.info(f"Отправка WebSocket 'started' (manual={manual})")
             await self._broadcast_status("started")
+            logger.info("WebSocket 'started' отправлен")
             
             if manual:
                 logger.info("Начало генерации отчета (ручной запуск)")
