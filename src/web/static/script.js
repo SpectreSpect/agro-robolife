@@ -82,7 +82,8 @@ function handleWebSocketMessage(data) {
             loadReports();
             loadFiles();  // Обновляем список файлов (они были удалены)
         }, 500);
-        showNotification('Отчёт успешно создан!', 'success');
+        // Молча завершаем (без alert)
+        console.log('✅ Отчёт успешно создан');
     } else if (status === 'failed') {
         // Генерация не удалась
         hideGenerationStatus();
@@ -123,6 +124,12 @@ function disableFileActions() {
         uploadArea.style.opacity = '0.5';
     }
     
+    // Блокируем кнопку "Загрузить файлы"
+    const uploadFilesBtn = document.getElementById('uploadFilesBtn');
+    if (uploadFilesBtn) {
+        uploadFilesBtn.disabled = true;
+    }
+    
     // Блокируем input для выбора файлов
     const fileInput = document.getElementById('fileInput');
     if (fileInput) {
@@ -142,6 +149,12 @@ function enableFileActions() {
         uploadArea.classList.remove('disabled');
         uploadArea.style.pointerEvents = 'auto';
         uploadArea.style.opacity = '1';
+    }
+    
+    // Разблокируем кнопку "Загрузить файлы"
+    const uploadFilesBtn = document.getElementById('uploadFilesBtn');
+    if (uploadFilesBtn) {
+        uploadFilesBtn.disabled = false;
     }
     
     // Разблокируем input для выбора файлов
@@ -251,7 +264,8 @@ async function uploadFiles(files) {
         
         const data = await response.json();
         
-        alert(`Загружено ${data.files.length} файлов`);
+        // Молча обновляем список файлов (без alert)
+        console.log(`Загружено ${data.files.length} файлов`);
         loadFiles();
         
     } catch (error) {
