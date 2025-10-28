@@ -22,7 +22,8 @@ class ReportScheduler:
     """Планировщик для автоматической генерации отчетов"""
     
     def __init__(self, shared_files_dir: Path, archived_files_dir: Path, output_dir: Path, template_path: Path):
-        self.scheduler = AsyncIOScheduler()
+        # Настраиваем планировщик на работу в UTC timezone
+        self.scheduler = AsyncIOScheduler(timezone=pytz.utc)
         self.shared_files_dir = shared_files_dir
         self.archived_files_dir = archived_files_dir
         self.output_dir = output_dir
@@ -140,13 +141,16 @@ class ReportScheduler:
                 # Разовая задача
                 now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
                 if config.scheduled_time and config.scheduled_time > now_utc:
+                    # Добавляем UTC timezone к naive datetime для планировщика
+                    scheduled_time_utc = config.scheduled_time.replace(tzinfo=timezone.utc)
+                    
                     job = self.scheduler.add_job(
                         self._scheduled_generation,
-                        trigger=DateTrigger(run_date=config.scheduled_time),
+                        trigger=DateTrigger(run_date=scheduled_time_utc),
                         id="report_generation",
                         replace_existing=True
                     )
-                    logger.info(f"✅ Разовая задача запланирована на {config.scheduled_time}")
+                    logger.info(f"✅ Разовая задача запланирована на {config.scheduled_time} UTC")
                     logger.info(f"   Job ID: {job.id}, Next run: {job.next_run_time}")
                 else:
                     logger.warning("Время разовой задачи в прошлом или не указано")
@@ -155,9 +159,10 @@ class ReportScheduler:
                 # Периодическая задача
                 if config.periodic_time:
                     hour, minute = map(int, config.periodic_time.split(":"))
+                    # Явно указываем UTC timezone для CronTrigger
                     job = self.scheduler.add_job(
                         self._scheduled_generation,
-                        trigger=CronTrigger(hour=hour, minute=minute),
+                        trigger=CronTrigger(hour=hour, minute=minute, timezone=pytz.utc),
                         id="report_generation",
                         replace_existing=True
                     )
