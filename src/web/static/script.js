@@ -78,6 +78,13 @@ function connectWebSocket() {
 }
 
 function handleWebSocketMessage(data) {
+    // Обработка уведомления об изменении файлов
+    if (data.type === 'files_updated') {
+        console.log('Файлы обновлены другим пользователем');
+        loadFiles();  // Перезагружаем список файлов
+        return;
+    }
+    
     // Обработка уведомления об изменении расписания
     if (data.type === 'schedule_updated') {
         console.log('Расписание обновлено другим пользователем');

@@ -166,6 +166,11 @@ async def upload_files(files: List[UploadFile] = File(...)):
             uploaded_files.append(file_path.name)
             logger.info(f"Загружен файл: {file_path.name}")
 
+        # Уведомляем всех клиентов об изменении файлов
+        await ws_manager.broadcast({
+            "type": "files_updated"
+        })
+        
         return {
             "files": uploaded_files,
             "message": f"Загружено {len(uploaded_files)} файлов"
@@ -187,6 +192,11 @@ async def delete_file(filename: str):
         
         file_path.unlink()
         logger.info(f"Удален файл: {filename}")
+        
+        # Уведомляем всех клиентов об изменении файлов
+        await ws_manager.broadcast({
+            "type": "files_updated"
+        })
         
         return {"message": "Файл удален"}
     
@@ -216,6 +226,11 @@ async def rename_file(filename: str, request: FileRenameRequest):
         
         old_path.rename(new_path)
         logger.info(f"Файл переименован: {filename} -> {request.new_name}")
+        
+        # Уведомляем всех клиентов об изменении файлов
+        await ws_manager.broadcast({
+            "type": "files_updated"
+        })
         
         return {"message": "Файл переименован", "new_name": request.new_name}
 
