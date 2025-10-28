@@ -9,9 +9,13 @@ logger = logging.getLogger(__name__)
 class LLMClient:
     
     def __init__(self, api_key: str, base_url: str = "https://gptunnel.ru/v1"):
+        # Увеличиваем timeout до 90 секунд для медленных ответов LLM
+        # (иногда gptunnel.ru может быть медленным)
         self.client = OpenAI(
             api_key=api_key,
-            base_url=base_url
+            base_url=base_url,
+            timeout=90.0,  # 90 секунд вместо дефолтных ~10
+            max_retries=2   # 2 попытки при ошибках (с увеличенным timeout меньше retries)
         )
         self.model = "gpt-4o-mini"
     
@@ -75,7 +79,9 @@ Return JSON:
             return table_type
             
         except Exception as e:
-            logger.error(f"Ошибка при определении типа таблицы {file_name}: {e}")
+            error_type = type(e).__name__
+            logger.error(f"Ошибка при определении типа таблицы {file_name}: {error_type}: {e}")
+            logger.info(f"Используется дефолтный тип 'daily_report' для {file_name}")
             return "daily_report"
     
     def extract_table_data(

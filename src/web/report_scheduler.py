@@ -145,8 +145,10 @@ class ReportScheduler:
                         id="report_generation",
                         replace_existing=True
                     )
+                    # Конвертируем next_run_time в UTC для логирования
+                    next_run_utc = job.next_run_time.astimezone(pytz.utc) if job.next_run_time else None
                     logger.info(f"✅ Разовая задача запланирована на {config.scheduled_time} UTC")
-                    logger.info(f"   Job ID: {job.id}, Next run: {job.next_run_time}")
+                    logger.info(f"   Job ID: {job.id}, Next run (UTC): {next_run_utc}")
                 else:
                     logger.warning("Время разовой задачи в прошлом или не указано")
                     
@@ -161,8 +163,11 @@ class ReportScheduler:
                         id="report_generation",
                         replace_existing=True
                     )
+                    # Конвертируем next_run_time в UTC для логирования
+                    next_run_utc = job.next_run_time.astimezone(pytz.utc) if job.next_run_time else None
                     logger.info(f"✅ Периодическая задача запланирована на {config.periodic_time} ежедневно (UTC)")
-                    logger.info(f"   Job ID: {job.id}, Next run: {job.next_run_time}")
+                    logger.info(f"   Job ID: {job.id}, Next run (UTC): {next_run_utc}")
+                    logger.info(f"   Задача будет запущена в {hour:02d}:{minute:02d} UTC каждый день")
                 else:
                     logger.warning("Время периодической задачи не указано")
             

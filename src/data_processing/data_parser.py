@@ -631,8 +631,23 @@ class HybridParser:
             
             sheet_data = ExcelToLLMConverter.convert_sheet_to_dict(ws, wb.sheetnames[0])
             
-            # Определяем тип таблицы через LLM
-            table_type = self.llm_client.determine_table_type(sheet_data, self.file_path.name)
+            # Определяем тип таблицы через LLM (с fallback при ошибке)
+            table_type = None
+            try:
+                table_type = self.llm_client.determine_table_type(sheet_data, self.file_path.name)
+            except Exception as llm_error:
+                logger.warning(f"LLM не смог определить тип таблицы: {llm_error}")
+                logger.info("Пробуем алгоритмический парсер для дневного отчёта как fallback")
+                # Fallback: пробуем алгоритмический парсер для дневного отчёта
+                algo_parser = DailyReportAlgorithmicParser(self.file_path)
+                if algo_parser.validate_structure(ws):
+                    logger.info(f"✓ Fallback успешен: используется алгоритмический парсер")
+                    wb.close()
+                    return algo_parser.parse()
+                else:
+                    # Если алгоритмический не подошёл, пробуем LLM парсер напрямую
+                    logger.info(f"Fallback на LLM парсер для дневного отчёта")
+                    table_type = "daily_report"  # Предполагаем дневной отчёт
             
             if table_type == "operational_report":
                 logger.info(f"Тип: оперативная отчётность → используется алгоритмический парсер")
