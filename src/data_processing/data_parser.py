@@ -294,11 +294,14 @@ class DailyReportAlgorithmicParser:
             
             # Парсим строки данных
             records_count = 0
+            logger.info(f"  Начинаем парсинг данных с строки {data_start_row} до строки {ws.max_row}")
+            
             for row_idx in range(data_start_row, ws.max_row + 1):
                 # Проверяем первую колонку
                 operation_val = ws.cell(row_idx, columns['operation']).value
                 
                 if not operation_val:
+                    logger.debug(f"  Строка {row_idx}: пустая первая колонка, конец данных")
                     break  # Пустая строка - конец данных
                 
                 operation_str = str(operation_val).strip()
@@ -324,6 +327,7 @@ class DailyReportAlgorithmicParser:
                 
                 # Пропускаем строки без данных
                 if work_per_day == 0 and work_from_start == 0 and remaining_work == 0:
+                    logger.debug(f"  Строка {row_idx}: все числовые значения равны 0, пропускаем")
                     continue
                 
                 # Вычисляем процент выполнения
@@ -345,6 +349,10 @@ class DailyReportAlgorithmicParser:
                 
                 self.data.append(record)
                 records_count += 1
+                
+                # Логируем первые 3 записи для отладки
+                if records_count <= 3:
+                    logger.info(f"  Строка {row_idx}: {operation_str[:20]} | {crop_name[:15]} | день={work_per_day} начало={work_from_start} остаток={remaining_work}")
             
             wb.close()
             logger.info(f"  Извлечено {records_count} записей алгоритмически")

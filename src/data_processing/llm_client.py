@@ -59,7 +59,7 @@ Return JSON:
             
             # Логируем размер промпта для отладки
             prompt_size = len(prompt.encode('utf-8'))
-            logger.debug(f"📊 LLM запрос для {file_name}: {prompt_size} байт, {len(rows_sample)} строк")
+            logger.info(f"📊 LLM запрос определения типа для {file_name}: {prompt_size} байт ({len(rows_sample)} строк данных)")
             
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -105,7 +105,7 @@ Return JSON:
             # Логируем размер промпта для отладки
             prompt_size = len(prompt.encode('utf-8'))
             rows_count = len(sheet_data.get("rows", [])[:50])
-            logger.debug(f"📊 LLM запрос для парсинга {file_name}: {prompt_size} байт, {rows_count} строк")
+            logger.info(f"📊 LLM запрос парсинга данных для {file_name}: {prompt_size} байт ({rows_count} строк данных)")
             
             response = self.client.chat.completions.create(
                 model=self.model,
