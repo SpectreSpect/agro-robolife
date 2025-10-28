@@ -1,6 +1,19 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean
-from datetime import datetime
+from datetime import datetime, timezone
 from .database import Base
+
+
+def _serialize_datetime(dt):
+    """
+    Сериализует datetime в ISO формат с UTC timezone
+    Считаем что все даты в БД хранятся в UTC (naive datetime)
+    """
+    if dt is None:
+        return None
+    # Если дата без timezone, добавляем UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 
 class ProcessingJob(Base):
@@ -27,7 +40,7 @@ class ProcessingJob(Base):
     def to_dict(self):
         return {
             "id": self.id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": _serialize_datetime(self.created_at),
             "status": self.status,
             "input_files": self.input_files,
             "output_file": self.output_file,
@@ -36,9 +49,9 @@ class ProcessingJob(Base):
             "operations_count": self.operations_count,
             "crops_count": self.crops_count,
             "error_message": self.error_message,
-            "scheduled_time": self.scheduled_time.isoformat() if self.scheduled_time else None,
+            "scheduled_time": _serialize_datetime(self.scheduled_time),
             "recipient_email": self.recipient_email,
-            "sent_at": self.sent_at.isoformat() if self.sent_at else None,
+            "sent_at": _serialize_datetime(self.sent_at),
             "is_cancelled": self.is_cancelled,
         }
 
@@ -68,12 +81,12 @@ class Report(Base):
     def to_dict(self):
         return {
             "id": self.id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "scheduled_time": self.scheduled_time.isoformat() if self.scheduled_time else None,
+            "created_at": _serialize_datetime(self.created_at),
+            "scheduled_time": _serialize_datetime(self.scheduled_time),
             "output_file": self.output_file,
             "status": self.status,
             "recipient_email": self.recipient_email,
-            "sent_at": self.sent_at.isoformat() if self.sent_at else None,
+            "sent_at": _serialize_datetime(self.sent_at),
             "error_message": self.error_message,
             "records_count": self.records_count,
             "departments_count": self.departments_count,
@@ -102,10 +115,10 @@ class ScheduleConfig(Base):
             "id": self.id,
             "is_enabled": self.is_enabled,
             "schedule_type": self.schedule_type,
-            "scheduled_time": self.scheduled_time.isoformat() if self.scheduled_time else None,
+            "scheduled_time": _serialize_datetime(self.scheduled_time),
             "periodic_time": self.periodic_time,
             "recipient_email": self.recipient_email,
-            "last_run": self.last_run.isoformat() if self.last_run else None,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_run": _serialize_datetime(self.last_run),
+            "created_at": _serialize_datetime(self.created_at),
+            "updated_at": _serialize_datetime(self.updated_at),
         }

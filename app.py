@@ -3,7 +3,7 @@ import sys
 import shutil
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -127,7 +127,7 @@ async def get_files():
                 files.append({
                     "name": file_path.name,
                     "size": stat.st_size,
-                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
                 })
         
         # Сортируем по дате модификации (новые первые)
@@ -288,14 +288,14 @@ async def set_schedule(request: ScheduleRequest):
                 raise HTTPException(status_code=400, detail="Не указано время для разовой задачи")
             
             # Парсим ISO время
-            scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
-            scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
-            
-            if scheduled_time_utc.tzinfo:
-                scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
-            else:
-                scheduled_time = scheduled_time_utc
-            
+        scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
+        scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
+        
+        if scheduled_time_utc.tzinfo:
+            scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
+        else:
+            scheduled_time = scheduled_time_utc
+        
             if scheduled_time <= datetime.now():
                 raise HTTPException(status_code=400, detail="Время должно быть в будущем")
         
