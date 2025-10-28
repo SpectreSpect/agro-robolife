@@ -499,8 +499,19 @@ async function loadSchedule() {
                 html += `<p><strong>Тип:</strong> Разовая задача</p>`;
                 html += `<p><strong>Дата и время:</strong> ${scheduledDate.toLocaleString('ru-RU')}</p>`;
             } else if (schedule.schedule_type === 'periodic') {
+                // Конвертируем UTC время обратно в локальное для отображения
+                // schedule.periodic_time = "11:00" (UTC)
+                const [utcHours, utcMinutes] = schedule.periodic_time.split(':');
+                const utcDate = new Date();
+                utcDate.setUTCHours(parseInt(utcHours), parseInt(utcMinutes), 0, 0);
+                
+                // Получаем локальные часы:минуты
+                const localHours = utcDate.getHours();
+                const localMinutes = utcDate.getMinutes();
+                const localTimeStr = `${String(localHours).padStart(2, '0')}:${String(localMinutes).padStart(2, '0')}`;
+                
                 html += `<p><strong>Тип:</strong> Периодическая задача (ежедневно)</p>`;
-                html += `<p><strong>Время:</strong> ${schedule.periodic_time}</p>`;
+                html += `<p><strong>Время:</strong> ${localTimeStr}</p>`;
             }
             
             html += `<p><strong>Email:</strong> ${schedule.recipient_email || 'Не указан'}</p>`;
@@ -555,7 +566,18 @@ async function setSchedule() {
             return;
         }
         
-        requestData.periodic_time = periodicTime;
+        // Конвертируем локальное время в UTC
+        // periodicTime = "15:00" (локальное время пользователя)
+        const [hours, minutes] = periodicTime.split(':');
+        const localDate = new Date();
+        localDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        
+        // Получаем часы:минуты в UTC
+        const utcHours = localDate.getUTCHours();
+        const utcMinutes = localDate.getUTCMinutes();
+        const utcTime = `${String(utcHours).padStart(2, '0')}:${String(utcMinutes).padStart(2, '0')}`;
+        
+        requestData.periodic_time = utcTime;
     }
     
     try {
