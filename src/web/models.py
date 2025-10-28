@@ -21,7 +21,7 @@ class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     status = Column(String, default="pending")  # pending, processing, completed, failed, sent
     input_files = Column(JSON)  # Список имен загруженных файлов
     output_file = Column(String, nullable=True)
@@ -61,7 +61,7 @@ class Report(Base):
     __tablename__ = "reports"
 
     id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     scheduled_time = Column(DateTime, nullable=True)  # Когда был запланирован
     output_file = Column(String, nullable=False)  # Имя файла отчета
     status = Column(String, default="completed")  # completed, sent, failed
@@ -107,8 +107,8 @@ class ScheduleConfig(Base):
     periodic_time = Column(String, nullable=True)  # Для периодической (например "14:00")
     recipient_email = Column(String, nullable=True)
     last_run = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     
     def to_dict(self):
         return {

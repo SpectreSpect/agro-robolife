@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import shutil
-from datetime import datetime, time
+import pytz
+from datetime import datetime, time, timezone
 from pathlib import Path
 from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -263,12 +264,12 @@ class ReportScheduler:
             if not files:
                 logger.warning("В папке shared_files нет файлов для обработки")
                 if config:
-                    config.last_run = datetime.now()
+                    config.last_run = datetime.now(timezone.utc).replace(tzinfo=None)
                     db.commit()
                 return
             
             # Создаем папку для архива
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
             archive_dir = self.archived_files_dir / timestamp
             archive_dir.mkdir(exist_ok=True)
             
@@ -297,7 +298,7 @@ class ReportScheduler:
                 )
                 db.add(report)
                 if config:
-                    config.last_run = datetime.now()
+                    config.last_run = datetime.now(timezone.utc).replace(tzinfo=None)
                 db.commit()
                 return
             
@@ -325,7 +326,7 @@ class ReportScheduler:
                 )
                 db.add(report)
                 if config:
-                    config.last_run = datetime.now()
+                    config.last_run = datetime.now(timezone.utc).replace(tzinfo=None)
                 db.commit()
                 return
             
@@ -359,12 +360,16 @@ class ReportScheduler:
             
             # Отправляем на email (если указан)
             if recipient_email:
+                # Конвертируем текущее время в московское для email
+                moscow_tz = pytz.timezone('Europe/Moscow')
+                moscow_time = datetime.now(timezone.utc).astimezone(moscow_tz)
+                
                 subject = f"Сводный отчет по сельскохозяйственным данным"
                 body = f"""Добрый день!
 
 Во вложении находится {'автоматически сгенерированный' if not manual else 'сгенерированный'} сводный отчет по сельскохозяйственным данным.
 
-Дата создания: {datetime.now().strftime('%d.%m.%Y %H:%M')}
+Дата создания: {moscow_time.strftime('%d.%m.%Y %H:%M')} (МСК)
 """
                 
                 job_info = {
@@ -386,7 +391,7 @@ class ReportScheduler:
                 
                 if email_success:
                     report.status = "sent"
-                    report.sent_at = datetime.now()
+                    report.sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
                     logger.info("Отчет успешно отправлен")
                 else:
                     report.error_message = "Ошибка при отправке email"
@@ -394,7 +399,7 @@ class ReportScheduler:
             
             # Обновляем время последнего запуска (только для запланированных задач)
             if config and not manual:
-                config.last_run = datetime.now()
+                config.last_run = datetime.now(timezone.utc).replace(tzinfo=None)
                 
                 # Если это была разовая задача, отключаем расписание
                 if config.schedule_type == "one_time":

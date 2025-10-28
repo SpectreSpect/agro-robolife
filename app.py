@@ -358,7 +358,7 @@ async def get_countdown():
         
         if schedule["schedule_type"] == "one_time" and schedule["scheduled_time"]:
             scheduled_dt = datetime.fromisoformat(schedule["scheduled_time"])
-            now = datetime.now()
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             
             if scheduled_dt > now:
                 seconds_left = (scheduled_dt - now).total_seconds()
@@ -372,8 +372,8 @@ async def get_countdown():
         elif schedule["schedule_type"] == "periodic" and schedule["periodic_time"]:
             # Вычисляем следующее срабатывание
             hour, minute = map(int, schedule["periodic_time"].split(":"))
-            now = datetime.now()
-            next_run = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            next_run = datetime.now(timezone.utc).replace(tzinfo=None, hour=hour, minute=minute, second=0, microsecond=0)
             
             if next_run <= now:
                 # Если время уже прошло сегодня, берем завтра
@@ -385,7 +385,7 @@ async def get_countdown():
                 "active": True,
                 "type": "periodic",
                 "periodic_time": schedule["periodic_time"],
-                "next_run": next_run.isoformat(),
+                "next_run": next_run.replace(tzinfo=timezone.utc).isoformat(),
                 "seconds_left": int(seconds_left)
             }
         
