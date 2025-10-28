@@ -71,17 +71,23 @@ function handleWebSocketMessage(data) {
         // Генерация началась
         showGenerationStatus();
         disableScheduleButtons();
+        disableFileActions();  // Блокируем действия с файлами
     } else if (status === 'completed') {
         // Генерация завершена успешно
         hideGenerationStatus();
         enableScheduleButtons();
-        // Автоматически обновляем историю отчётов
-        setTimeout(() => loadReports(), 500);
+        enableFileActions();  // Разблокируем действия с файлами
+        // Автоматически обновляем историю отчётов и список файлов
+        setTimeout(() => {
+            loadReports();
+            loadFiles();  // Обновляем список файлов (они были удалены)
+        }, 500);
         showNotification('Отчёт успешно создан!', 'success');
     } else if (status === 'failed') {
         // Генерация не удалась
         hideGenerationStatus();
         enableScheduleButtons();
+        enableFileActions();  // Разблокируем действия с файлами
         showNotification('Ошибка при генерации отчёта: ' + (data.error || 'неизвестная ошибка'), 'error');
     }
 }
@@ -108,6 +114,48 @@ function enableScheduleButtons() {
     document.getElementById('cancelScheduleBtn').disabled = false;
 }
 
+function disableFileActions() {
+    // Блокируем drag-and-drop зону
+    const uploadArea = document.getElementById('uploadArea');
+    if (uploadArea) {
+        uploadArea.classList.add('disabled');
+        uploadArea.style.pointerEvents = 'none';
+        uploadArea.style.opacity = '0.5';
+    }
+    
+    // Блокируем input для выбора файлов
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) {
+        fileInput.disabled = true;
+    }
+    
+    // Блокируем все кнопки действий с файлами
+    document.querySelectorAll('.file-actions .btn').forEach(btn => {
+        btn.disabled = true;
+    });
+}
+
+function enableFileActions() {
+    // Разблокируем drag-and-drop зону
+    const uploadArea = document.getElementById('uploadArea');
+    if (uploadArea) {
+        uploadArea.classList.remove('disabled');
+        uploadArea.style.pointerEvents = 'auto';
+        uploadArea.style.opacity = '1';
+    }
+    
+    // Разблокируем input для выбора файлов
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) {
+        fileInput.disabled = false;
+    }
+    
+    // Разблокируем все кнопки действий с файлами
+    document.querySelectorAll('.file-actions .btn').forEach(btn => {
+        btn.disabled = false;
+    });
+}
+
 function showNotification(message, type = 'info') {
     // Простое уведомление через alert (можно улучшить позже)
     alert(message);
@@ -127,9 +175,10 @@ async function checkGenerationStatus() {
         const data = await response.json();
         
         if (data.is_generating) {
-            // Если идёт генерация, показываем индикатор и блокируем кнопки
+            // Если идёт генерация, показываем индикатор и блокируем всё
             showGenerationStatus();
             disableScheduleButtons();
+            disableFileActions();  // Блокируем действия с файлами
             console.log('Обнаружена активная генерация при загрузке страницы');
         }
     } catch (error) {
