@@ -14,7 +14,12 @@ document.addEventListener('DOMContentLoaded', function() {
     setDefaultScheduleTime();
     startCountdownUpdate();
     connectWebSocket();
-    checkGenerationStatus(); // Проверяем статус при загрузке
+    
+    // Проверяем статус генерации с небольшой задержкой
+    // чтобы страница и WebSocket успели инициализироваться
+    setTimeout(() => {
+        checkGenerationStatus();
+    }, 500);
 });
 
 // ============================================================================
@@ -103,16 +108,25 @@ async function checkGenerationStatus() {
     // Проверяем статус генерации при загрузке страницы
     try {
         const response = await fetch('/api/generation-status');
+        
+        // Проверяем что запрос успешен
+        if (!response.ok) {
+            console.warn('Не удалось получить статус генерации:', response.status);
+            return;
+        }
+        
         const data = await response.json();
         
         if (data.is_generating) {
             // Если идёт генерация, показываем индикатор и блокируем кнопки
             showGenerationStatus();
             disableScheduleButtons();
+            console.log('Обнаружена активная генерация при загрузке страницы');
         }
     } catch (error) {
-        console.error('Ошибка проверки статуса генерации:', error);
-        // Не показываем alert при ошибке, чтобы не мешать пользователю
+        // Молча игнорируем ошибки при проверке статуса
+        // (может быть сервер ещё не готов или временная проблема сети)
+        console.debug('Не удалось проверить статус генерации:', error.message);
     }
 }
 
@@ -410,7 +424,7 @@ async function loadSchedule() {
             html += '</div>';
             
             statusDiv.innerHTML = html;
-        } else {
+    } else {
             statusDiv.innerHTML = '<div class="schedule-inactive"><p>❌ Расписание не установлено</p></div>';
         }
         
@@ -724,16 +738,16 @@ async function deleteReport(reportId) {
     try {
         const response = await fetch(`/api/reports/${reportId}`, {
             method: 'DELETE'
-        });
-        
-        if (!response.ok) {
+            });
+            
+            if (!response.ok) {
             throw new Error('Ошибка при удалении отчета');
         }
         
         loadReports();
-        
-    } catch (error) {
-        console.error('Ошибка:', error);
+            
+        } catch (error) {
+            console.error('Ошибка:', error);
         alert('Ошибка при удалении отчета: ' + error.message);
     }
 }
