@@ -4,6 +4,15 @@ let currentRenamingFile = null;
 let ws = null;
 let wsReconnectTimeout = null;
 
+// Глобальный обработчик необработанных Promise rejection
+// Предотвращает показ alert "Failed to fetch" при сетевых ошибках
+window.addEventListener('unhandledrejection', function(event) {
+    // Молча логируем ошибку
+    console.debug('Необработанная ошибка Promise:', event.reason);
+    // Предотвращаем стандартное поведение браузера (показ alert)
+    event.preventDefault();
+});
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     setupUploadArea();
@@ -207,8 +216,11 @@ async function loadFiles() {
     
     try {
         const response = await fetch('/api/files');
+        
         if (!response.ok) {
-            throw new Error('Ошибка при загрузке списка файлов');
+            console.warn('Не удалось загрузить список файлов:', response.status);
+            filesList.innerHTML = '<p class="info-message">Загрузка файлов...</p>';
+            return;
         }
         
         const data = await response.json();
@@ -264,8 +276,9 @@ async function loadFiles() {
         filesList.innerHTML = html;
         
     } catch (error) {
-        console.error('Ошибка:', error);
-        filesList.innerHTML = '<p class="error-message">Ошибка при загрузке списка файлов</p>';
+        // Молча обрабатываем ошибки (могут быть при перезагрузке страницы)
+        console.debug('Не удалось загрузить список файлов:', error.message);
+        filesList.innerHTML = '<p class="info-message">Загрузка файлов...</p>';
     }
 }
 
@@ -400,8 +413,11 @@ async function loadSchedule() {
     
     try {
         const response = await fetch('/api/schedule');
+        
         if (!response.ok) {
-            throw new Error('Ошибка при загрузке расписания');
+            console.warn('Не удалось загрузить расписание:', response.status);
+            statusDiv.innerHTML = '<p class="info-message">Загрузка расписания...</p>';
+            return;
         }
         
         const schedule = await response.json();
@@ -429,8 +445,9 @@ async function loadSchedule() {
         }
         
     } catch (error) {
-        console.error('Ошибка:', error);
-        statusDiv.innerHTML = '<p class="error-message">Ошибка при загрузке расписания</p>';
+        // Молча обрабатываем ошибки (могут быть при перезагрузке страницы)
+        console.debug('Не удалось загрузить расписание:', error.message);
+        statusDiv.innerHTML = '<p class="info-message">Загрузка расписания...</p>';
     }
 }
 
@@ -610,8 +627,11 @@ async function loadReports() {
     
     try {
         const response = await fetch('/api/reports');
+        
         if (!response.ok) {
-            throw new Error('Ошибка при загрузке отчетов');
+            console.warn('Не удалось загрузить отчеты:', response.status);
+            reportsList.innerHTML = '<p class="info-message">Загрузка отчетов...</p>';
+            return;
         }
         
         const reports = await response.json();
@@ -628,8 +648,9 @@ async function loadReports() {
         });
         
     } catch (error) {
-        console.error('Ошибка:', error);
-        reportsList.innerHTML = '<p class="error-message">Ошибка при загрузке отчетов</p>';
+        // Молча обрабатываем ошибки (могут быть при перезагрузке страницы)
+        console.debug('Не удалось загрузить отчеты:', error.message);
+        reportsList.innerHTML = '<p class="info-message">Загрузка отчетов...</p>';
     }
 }
 
