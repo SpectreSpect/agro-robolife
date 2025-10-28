@@ -1,6 +1,5 @@
 // Глобальные переменные
 let countdownInterval = null;
-let scheduleCheckInterval = null;
 let currentRenamingFile = null;
 let ws = null;
 let wsReconnectTimeout = null;
@@ -23,8 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadReports();
     setDefaultScheduleTime();
     startCountdownUpdate();
-    startScheduleCheck();  // Периодическая проверка расписания для синхронизации
-    connectWebSocket();
+    connectWebSocket();  // WebSocket для real-time обновлений (генерация + расписание)
     
     // Проверяем статус генерации с небольшой задержкой
     // чтобы страница и WebSocket успели инициализироваться
@@ -67,6 +65,14 @@ function connectWebSocket() {
 }
 
 function handleWebSocketMessage(data) {
+    // Обработка уведомления об изменении расписания
+    if (data.type === 'schedule_updated') {
+        console.log('Расписание обновлено другим пользователем');
+        loadSchedule();  // Перезагружаем расписание
+        return;
+    }
+    
+    // Обработка статуса генерации отчёта
     const status = data.status;
     
     if (status === 'started') {
@@ -694,15 +700,6 @@ function startCountdownUpdate() {
     }
     
     countdownInterval = setInterval(updateCountdown, 1000);
-}
-
-function startScheduleCheck() {
-    if (scheduleCheckInterval) {
-        clearInterval(scheduleCheckInterval);
-    }
-    
-    // Проверяем расписание каждые 5 секунд для синхронизации между пользователями
-    scheduleCheckInterval = setInterval(loadSchedule, 5000);
 }
 
 async function updateCountdown() {

@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import logging
+import json
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -320,6 +321,10 @@ async def set_schedule(request: ScheduleRequest):
         )
         
         if success:
+            # Уведомляем всех подключенных клиентов об изменении расписания
+            await ws_manager.broadcast(json.dumps({
+                "type": "schedule_updated"
+            }))
             return {"message": "Расписание установлено"}
         else:
             raise HTTPException(status_code=500, detail="Ошибка при установке расписания")
@@ -338,6 +343,10 @@ async def cancel_schedule():
         success = scheduler.cancel_schedule()
         
         if success:
+            # Уведомляем всех подключенных клиентов об отмене расписания
+            await ws_manager.broadcast(json.dumps({
+                "type": "schedule_updated"
+            }))
             return {"message": "Расписание отменено"}
         else:
             raise HTTPException(status_code=500, detail="Ошибка при отмене расписания")
