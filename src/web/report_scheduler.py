@@ -48,7 +48,10 @@ class ReportScheduler:
         """Отправить статус генерации всем подключенным клиентам"""
         if self.ws_manager:
             message = {"status": status, **kwargs}
+            logger.info(f"Broadcasting WebSocket: {message}")
             await self.ws_manager.broadcast(message)
+        else:
+            logger.warning("WebSocket manager не установлен, broadcast пропущен")
     
     def _broadcast_status_sync(self, status: str, **kwargs):
         """Синхронная обертка для broadcast (для использования в синхронном коде)"""
@@ -86,6 +89,10 @@ class ReportScheduler:
             self._started = False
             logger.info("Планировщик отчетов остановлен")
     
+    async def _scheduled_generation(self):
+        """Wrapper для автоматической генерации по расписанию"""
+        await self._generate_report(manual=False)
+    
     def _load_active_schedule(self):
         """Загрузка активного расписания из БД"""
         db = SessionLocal()
@@ -115,7 +122,7 @@ class ReportScheduler:
                 # Разовая задача
                 if config.scheduled_time and config.scheduled_time > datetime.now():
                     self.scheduler.add_job(
-                        self._generate_report,
+                        self._scheduled_generation,
                         trigger=DateTrigger(run_date=config.scheduled_time),
                         id="report_generation",
                         replace_existing=True
@@ -129,7 +136,7 @@ class ReportScheduler:
                 if config.periodic_time:
                     hour, minute = map(int, config.periodic_time.split(":"))
                     self.scheduler.add_job(
-                        self._generate_report,
+                        self._scheduled_generation,
                         trigger=CronTrigger(hour=hour, minute=minute),
                         id="report_generation",
                         replace_existing=True
@@ -238,7 +245,9 @@ class ReportScheduler:
         try:
             # Устанавливаем флаг генерации и уведомляем клиентов
             self.is_generating = True
+            logger.info(f"Отправка WebSocket 'started' (manual={manual})")
             await self._broadcast_status("started")
+            logger.info("WebSocket 'started' отправлен")
             
             if manual:
                 logger.info("Начало генерации отчета (ручной запуск)")

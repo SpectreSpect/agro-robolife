@@ -322,9 +322,9 @@ async def set_schedule(request: ScheduleRequest):
         
         if success:
             # Уведомляем всех подключенных клиентов об изменении расписания
-            await ws_manager.broadcast(json.dumps({
+            await ws_manager.broadcast({
                 "type": "schedule_updated"
-            }))
+            })
             return {"message": "Расписание установлено"}
         else:
             raise HTTPException(status_code=500, detail="Ошибка при установке расписания")
@@ -344,9 +344,9 @@ async def cancel_schedule():
         
         if success:
             # Уведомляем всех подключенных клиентов об отмене расписания
-            await ws_manager.broadcast(json.dumps({
+            await ws_manager.broadcast({
                 "type": "schedule_updated"
-            }))
+            })
             return {"message": "Расписание отменено"}
         else:
             raise HTTPException(status_code=500, detail="Ошибка при отмене расписания")
