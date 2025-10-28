@@ -288,13 +288,13 @@ async def set_schedule(request: ScheduleRequest):
                 raise HTTPException(status_code=400, detail="Не указано время для разовой задачи")
             
             # Парсим ISO время
-        scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
-        scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
+            scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
+            scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
         
-        if scheduled_time_utc.tzinfo:
-            scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
-        else:
-            scheduled_time = scheduled_time_utc
+            if scheduled_time_utc.tzinfo:
+                scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
+            else:
+                scheduled_time = scheduled_time_utc
         
             if scheduled_time <= datetime.now():
                 raise HTTPException(status_code=400, detail="Время должно быть в будущем")
