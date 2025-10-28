@@ -31,14 +31,11 @@ class LLMClient:
             rows_data = sheet_data.get("rows", [])
             rows_sample = rows_data[:20] if len(rows_data) > 20 else rows_data
             
-            # Сокращаем данные для быстрого определения типа (только первые 10 строк)
-            rows_sample_short = rows_data[:10] if len(rows_data) > 10 else rows_data
-            
             prompt = f"""Determine the type of this Excel table.
 
 File: {file_name}
-Data (first 10 rows):
-{json.dumps(rows_sample_short, ensure_ascii=False, indent=2)}
+Data (first 20 rows):
+{json.dumps(rows_sample, ensure_ascii=False, indent=2)}
 
 Analyze and return ONLY ONE of these types:
 
@@ -62,7 +59,7 @@ Return JSON:
             
             # Логируем размер промпта для отладки
             prompt_size = len(prompt.encode('utf-8'))
-            logger.debug(f"📊 LLM запрос для {file_name}: {prompt_size} байт, {len(rows_sample_short)} строк")
+            logger.debug(f"📊 LLM запрос для {file_name}: {prompt_size} байт, {len(rows_sample)} строк")
             
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -107,7 +104,7 @@ Return JSON:
             
             # Логируем размер промпта для отладки
             prompt_size = len(prompt.encode('utf-8'))
-            rows_count = len(sheet_data.get("rows", [])[:30])
+            rows_count = len(sheet_data.get("rows", [])[:50])
             logger.debug(f"📊 LLM запрос для парсинга {file_name}: {prompt_size} байт, {rows_count} строк")
             
             response = self.client.chat.completions.create(
@@ -151,15 +148,14 @@ Return JSON:
         rows_data = sheet_data.get("rows", [])
         sheet_name = sheet_data.get("sheet_name", "Unknown")
         
-        # Сокращаем до 30 строк для ускорения (обычно данных меньше)
-        rows_sample = rows_data[:30] if len(rows_data) > 30 else rows_data
+        rows_sample = rows_data[:50] if len(rows_data) > 50 else rows_data
         
         prompt = f"""Extract agricultural data from DAILY REPORT table.
 
 File: {file_name}
 Sheet: {sheet_name}
 
-Data (first 30 rows):
+Data (first 50 rows):
 {json.dumps(rows_sample, ensure_ascii=False, indent=2)}
 
 This is a DAILY REPORT with single enterprise. Extract data as follows:

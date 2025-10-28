@@ -208,14 +208,14 @@ class DailyReportAlgorithmicParser:
                 if has_za_den and has_ot_nachala:
                     itogo_cols = [0, 0]  # Заглушка для проверки
             
-            # Должно быть минимум 2 колонки "Итого" (или подзаголовки)
-            if len(itogo_cols) < 2:
-                logger.debug(f"Найдено только {len(itogo_cols)} колонок 'Итого', нужно минимум 2")
+            # Более мягкая проверка: достаточно хотя бы одной "Итого" колонки
+            if len(itogo_cols) < 1:
+                logger.debug(f"Не найдено колонок 'Итого'")
                 return False
             
-            # Должна быть колонка "Остаток"
-            if not ostatok_col:
-                logger.debug("Не найдена колонка 'Остаток'")
+            # "Остаток" не обязателен, но желателен
+            if len(itogo_cols) < 2 and not ostatok_col:
+                logger.debug(f"Найдено только {len(itogo_cols)} колонок 'Итого' и нет 'Остаток' - структура слишком простая")
                 return False
             
             # Проверяем наличие данных после заголовка
@@ -311,7 +311,12 @@ class DailyReportAlgorithmicParser:
                 
                 itogo1_val = ws.cell(row_idx, columns['itogo1']).value
                 itogo2_val = ws.cell(row_idx, columns['itogo2']).value
-                ostatok_val = ws.cell(row_idx, columns['ostatok']).value
+                
+                # "Остаток" может отсутствовать
+                if columns['ostatok']:
+                    ostatok_val = ws.cell(row_idx, columns['ostatok']).value
+                else:
+                    ostatok_val = None
                 
                 work_per_day = float(itogo1_val) if isinstance(itogo1_val, (int, float)) else 0
                 work_from_start = float(itogo2_val) if isinstance(itogo2_val, (int, float)) else 0
@@ -352,7 +357,8 @@ class DailyReportAlgorithmicParser:
             return []
     
     def _find_header_row(self, ws) -> Optional[int]:
-        """Находит строку с заголовками (содержит 'Итого' и 'Остаток')"""
+        """Находит строку с заголовками (содержит 'Итого' или 'Остаток')"""
+        # Сначала ищем строку с обоими ключевыми словами
         for row in range(1, min(11, ws.max_row + 1)):
             has_itogo = False
             has_ostatok = False
@@ -368,6 +374,16 @@ class DailyReportAlgorithmicParser:
             
             if has_itogo and has_ostatok:
                 return row
+        
+        # Если не нашли, ищем строку хотя бы с "Итого"
+        for row in range(1, min(11, ws.max_row + 1)):
+            for col in range(1, ws.max_column + 1):
+                cell_value = ws.cell(row, col).value
+                if cell_value:
+                    cell_str = str(cell_value).strip().lower()
+                    if "итого" in cell_str or "итог" in cell_str:
+                        logger.debug(f"Найден заголовок с 'Итого' на строке {row} (без 'Остаток')")
+                        return row
         
         return None
     
@@ -414,16 +430,22 @@ class DailyReportAlgorithmicParser:
                 logger.info(f"  Обнаружены двухуровневые заголовки: 'Итого' с подколонками")
                 itogo_cols = [za_den_col, ot_nachala_col]
         
-        # Проверяем что нашли 2 колонки "Итого" и "Остаток"
-        if len(itogo_cols) < 2 or not ostatok_col:
+        # Более мягкая проверка: нужна хотя бы одна "Итого" колонка
+        if len(itogo_cols) < 1:
+            logger.debug("Не найдено ни одной колонки 'Итого'")
             return None
+        
+        # Если только одна "Итого", дублируем её для обоих полей
+        if len(itogo_cols) == 1:
+            logger.debug(f"Найдена только одна колонка 'Итого' - будет использована для обоих значений")
+            itogo_cols.append(itogo_cols[0])
         
         return {
             "operation": 1,  # Первая колонка - операция
             "crop": 2,  # Вторая колонка - культура
-            "itogo1": itogo_cols[0],  # Первая "Итого" - за день
-            "itogo2": itogo_cols[1],  # Вторая "Итого" - с начала
-            "ostatok": ostatok_col  # "Остаток"
+            "itogo1": itogo_cols[0] if len(itogo_cols) > 0 else None,  # Первая "Итого" - за день
+            "itogo2": itogo_cols[1] if len(itogo_cols) > 1 else itogo_cols[0],  # Вторая "Итого" - с начала
+            "ostatok": ostatok_col if ostatok_col else None  # "Остаток" (может быть None)
         }
     
     def _extract_date(self, ws) -> Optional[datetime]:
@@ -678,17 +700,53 @@ class HybridParser:
                     wb.close()
                     return algo_parser.parse()
                 else:
-                    logger.info(f"Тип: дневной отчёт → структура нестандартная, используется LLM парсер")
+                    logger.info(f"Тип: дневной отчёт → структура нестандартная, пробуем LLM парсер")
                     wb.close()
                     parser = DailyReportLLMParser(self.file_path)
-                    return parser.parse()
+                    result = parser.parse()
+                    
+                    # Если LLM парсер ничего не вернул (timeout/ошибка), пробуем алгоритмический
+                    if not result or len(result) == 0:
+                        logger.warning(f"⚠️ LLM парсер не смог обработать {self.file_path.name}")
+                        logger.info(f"🔄 Fallback: пробуем алгоритмический парсер для дневного отчёта")
+                        algo_parser = DailyReportAlgorithmicParser(self.file_path)
+                        result = algo_parser.parse()
+                        if result and len(result) > 0:
+                            logger.info(f"✓ Fallback успешен: извлечено {len(result)} записей алгоритмически")
+                        else:
+                            logger.warning(f"❌ Алгоритмический парсер тоже не смог обработать {self.file_path.name}")
+                    
+                    return result
             
             else:
-                # Для неизвестных типов используем LLM
-                logger.info(f"Тип: неизвестный → используется LLM парсер")
+                # Для неизвестных типов пробуем LLM, затем алгоритмические парсеры
+                logger.info(f"Тип: неизвестный → пробуем LLM парсер")
                 wb.close()
                 parser = DailyReportLLMParser(self.file_path)
-                return parser.parse()
+                result = parser.parse()
+                
+                # Если LLM не смог, пробуем все алгоритмические парсеры
+                if not result or len(result) == 0:
+                    logger.warning(f"⚠️ LLM парсер не смог обработать {self.file_path.name}")
+                    logger.info(f"🔄 Fallback: пробуем алгоритмические парсеры")
+                    
+                    # Пробуем дневной отчёт
+                    algo_daily = DailyReportAlgorithmicParser(self.file_path)
+                    result = algo_daily.parse()
+                    if result and len(result) > 0:
+                        logger.info(f"✓ Fallback успешен (дневной отчёт): извлечено {len(result)} записей")
+                        return result
+                    
+                    # Пробуем оперативную отчётность
+                    parser_operational = OperationalReportParser(self.file_path)
+                    result = parser_operational.parse()
+                    if result and len(result) > 0:
+                        logger.info(f"✓ Fallback успешен (оперативная отчётность): извлечено {len(result)} записей")
+                        return result
+                    
+                    logger.warning(f"❌ Ни один парсер не смог обработать {self.file_path.name}")
+                
+                return result
             
         except Exception as e:
             logger.error(f"Ошибка при парсинге {self.file_path.name}: {e}")
