@@ -8,10 +8,22 @@ let wsReconnectTimeout = null;
 // Глобальный обработчик необработанных Promise rejection
 // Предотвращает показ alert "Failed to fetch" при сетевых ошибках
 window.addEventListener('unhandledrejection', function(event) {
-    // Молча логируем ошибку
-    console.debug('Необработанная ошибка Promise:', event.reason);
-    // Предотвращаем стандартное поведение браузера (показ alert)
-    event.preventDefault();
+    const reason = event.reason;
+    
+    // Игнорируем сетевые ошибки (часто возникают при перезагрузке страницы)
+    if (reason && (
+        (reason.message && reason.message.includes('Failed to fetch')) ||
+        (reason.message && reason.message.includes('NetworkError')) ||
+        (reason.name === 'AbortError')
+    )) {
+        console.debug('Игнорируем сетевую ошибку:', reason.message || reason);
+        event.preventDefault();
+        return;
+    }
+    
+    // Для других ошибок логируем подробно
+    console.warn('Необработанная ошибка Promise:', reason);
+    event.preventDefault(); // Предотвращаем дефолтное поведение браузера
 });
 
 // Инициализация при загрузке страницы

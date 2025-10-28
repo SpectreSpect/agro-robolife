@@ -94,21 +94,16 @@ class ReportScheduler:
         """Wrapper для автоматической генерации по расписанию (синхронный)"""
         logger.info("⏰ Запуск автоматической генерации по расписанию")
         try:
-            # Получаем текущий event loop или создаем новый
+            # Всегда используем новый event loop для надежности
+            logger.info("Создаем новый event loop для генерации")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
-                loop = asyncio.get_running_loop()
-                # Если event loop уже запущен, создаем task
-                asyncio.create_task(self._generate_report(manual=False))
-                logger.info("Task создан в текущем event loop")
-            except RuntimeError:
-                # Если нет активного loop, запускаем синхронно
-                logger.info("Нет активного event loop, создаем новый")
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    loop.run_until_complete(self._generate_report(manual=False))
-                finally:
-                    loop.close()
+                loop.run_until_complete(self._generate_report(manual=False))
+                logger.info("Генерация завершена успешно")
+            finally:
+                loop.close()
+                logger.info("Event loop закрыт")
         except Exception as e:
             logger.error(f"Ошибка при автоматической генерации: {e}", exc_info=True)
     
