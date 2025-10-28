@@ -982,3 +982,38 @@ footer {
     transform: none;
 }
 
+/* Список исходных файлов */
+.source-files-list {
+    margin-top: 10px;
+    margin-left: 0;
+    list-style: none;
+}
+
+.source-files-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    margin: 5px 0;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+}
+
+.source-files-list li:hover {
+    background: #f8f9fa;
+    border-color: var(--primary-color);
+}
+
+.btn-download {
+    background-color: var(--info-color);
+    border-color: var(--info-color);
+    padding: 5px 12px;
+    font-size: 0.85rem;
+}
+
+.btn-download:hover {
+    background-color: #2980b9;
+    border-color: #2980b9;
+}
+

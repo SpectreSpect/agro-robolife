@@ -347,6 +347,16 @@ class ReportScheduler:
             
             logger.info(f"Отчет {output_filename} успешно создан")
             
+            # Удаляем файлы из shared_files после успешной генерации
+            logger.info("Очистка папки shared_files...")
+            for file in files:
+                try:
+                    if file.exists():
+                        file.unlink()
+                        logger.info(f"Файл {file.name} удален из shared_files")
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить {file.name}: {e}")
+            
             # Отправляем на email (если указан)
             if recipient_email:
                 subject = f"Сводный отчет по сельскохозяйственным данным"

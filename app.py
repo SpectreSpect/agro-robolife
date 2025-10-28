@@ -149,7 +149,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
         for file in files:
             if not file.filename.endswith((".xlsx", ".xls")):
                 continue
-            
+
             file_path = SHARED_FILES_DIR / file.filename
             
             # Если файл уже существует, добавляем timestamp
@@ -161,15 +161,15 @@ async def upload_files(files: List[UploadFile] = File(...)):
             with open(file_path, "wb") as f:
                 content = await file.read()
                 f.write(content)
-            
+
             uploaded_files.append(file_path.name)
             logger.info(f"Загружен файл: {file_path.name}")
-        
+
         return {
             "files": uploaded_files,
             "message": f"Загружено {len(uploaded_files)} файлов"
         }
-    
+
     except Exception as e:
         logger.error(f"Ошибка при загрузке файлов: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -217,7 +217,7 @@ async def rename_file(filename: str, request: FileRenameRequest):
         logger.info(f"Файл переименован: {filename} -> {request.new_name}")
         
         return {"message": "Файл переименован", "new_name": request.new_name}
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -233,13 +233,13 @@ async def download_shared_file(filename: str):
         
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Файл не найден")
-        
+
         return FileResponse(
             path=str(file_path),
             filename=filename,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -323,7 +323,7 @@ async def set_schedule(request: ScheduleRequest):
             return {"message": "Расписание установлено"}
         else:
             raise HTTPException(status_code=500, detail="Ошибка при установке расписания")
-    
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -458,11 +458,52 @@ async def download_report(report_id: int, db: Session = Depends(get_db)):
             filename=report.output_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-    
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Ошибка при скачивании отчета: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/reports/{report_id}/files/{filename}")
+async def download_source_file(report_id: int, filename: str, db: Session = Depends(get_db)):
+    """Скачать исходный файл из архива отчета"""
+    try:
+        report = db.query(Report).filter(Report.id == report_id).first()
+        
+        if not report:
+            raise HTTPException(status_code=404, detail="Отчет не найден")
+        
+        # Извлекаем timestamp из имени файла отчета
+        # Например: report_20251027_210700.xlsx -> 20251027_210700
+        import re
+        match = re.search(r'report_(\d{8}_\d{6})\.xlsx', report.output_file)
+        if not match:
+            raise HTTPException(status_code=404, detail="Не удалось определить архив")
+        
+        timestamp = match.group(1)
+        
+        # Проверяем что файл в списке archived_files
+        if not report.archived_files or filename not in report.archived_files:
+            raise HTTPException(status_code=404, detail="Файл не найден в архиве")
+        
+        # Путь к файлу в архиве
+        archive_path = ARCHIVED_FILES_DIR / timestamp / filename
+        
+        if not archive_path.exists():
+            raise HTTPException(status_code=404, detail="Файл не найден в архиве")
+        
+        return FileResponse(
+            path=str(archive_path),
+            filename=filename,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при скачивании исходного файла: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -487,7 +528,7 @@ async def delete_report(report_id: int, db: Session = Depends(get_db)):
         logger.info(f"Отчет {report_id} удален")
         
         return {"message": "Отчет удален"}
-    
+        
     except HTTPException:
         raise
     except Exception as e:

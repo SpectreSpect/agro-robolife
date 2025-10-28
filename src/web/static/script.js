@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setDefaultScheduleTime();
     startCountdownUpdate();
     connectWebSocket();
+    checkGenerationStatus(); // Проверяем статус при загрузке
 });
 
 // ============================================================================
@@ -96,6 +97,23 @@ function enableScheduleButtons() {
 function showNotification(message, type = 'info') {
     // Простое уведомление через alert (можно улучшить позже)
     alert(message);
+}
+
+async function checkGenerationStatus() {
+    // Проверяем статус генерации при загрузке страницы
+    try {
+        const response = await fetch('/api/generation-status');
+        const data = await response.json();
+        
+        if (data.is_generating) {
+            // Если идёт генерация, показываем индикатор и блокируем кнопки
+            showGenerationStatus();
+            disableScheduleButtons();
+        }
+    } catch (error) {
+        console.error('Ошибка проверки статуса генерации:', error);
+        // Не показываем alert при ошибке, чтобы не мешать пользователю
+    }
 }
 
 // ============================================================================
@@ -651,9 +669,16 @@ function createReportItem(report) {
         
         if (report.archived_files && report.archived_files.length > 0) {
             html += `<p><strong>Обработано файлов:</strong> ${report.archived_files.length}</p>`;
-            html += '<details><summary>Список файлов</summary><ul>';
+            html += '<details><summary>Исходные файлы (скачать)</summary><ul class="source-files-list">';
             report.archived_files.forEach(file => {
-                html += `<li>${file}</li>`;
+                html += `
+                    <li>
+                        📄 ${file}
+                        <button class="btn btn-sm btn-download" onclick="downloadSourceFile(${report.id}, '${file}')">
+                            ⬇ Скачать
+                        </button>
+                    </li>
+                `;
             });
             html += '</ul></details>';
         }
@@ -711,6 +736,12 @@ async function deleteReport(reportId) {
         console.error('Ошибка:', error);
         alert('Ошибка при удалении отчета: ' + error.message);
     }
+}
+
+function downloadSourceFile(reportId, filename) {
+    // Скачивание исходного файла из архива
+    const url = `/api/reports/${reportId}/files/${encodeURIComponent(filename)}`;
+    window.location.href = url;
 }
 
 // ============================================================================
