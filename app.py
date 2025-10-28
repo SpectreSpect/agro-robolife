@@ -303,16 +303,19 @@ async def set_schedule(request: ScheduleRequest):
             if not request.scheduled_time:
                 raise HTTPException(status_code=400, detail="Не указано время для разовой задачи")
             
-            # Парсим ISO время
+            # Парсим ISO время (приходит в UTC от фронтенда)
             scheduled_time_str = request.scheduled_time.replace('Z', '+00:00')
             scheduled_time_utc = datetime.fromisoformat(scheduled_time_str)
         
+            # Убираем timezone info, но оставляем время в UTC (не конвертируем в локальное!)
             if scheduled_time_utc.tzinfo:
-                scheduled_time = scheduled_time_utc.astimezone().replace(tzinfo=None)
+                scheduled_time = scheduled_time_utc.replace(tzinfo=None)
             else:
                 scheduled_time = scheduled_time_utc
         
-            if scheduled_time <= datetime.now():
+            # Сравниваем с текущим UTC временем
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            if scheduled_time <= now_utc:
                 raise HTTPException(status_code=400, detail="Время должно быть в будущем")
         
         elif request.schedule_type == "periodic":
