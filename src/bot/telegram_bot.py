@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone
+import pytz
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -246,9 +247,6 @@ class AgroTelegramBot:
             countdown = await self.bot_manager.get_schedule_countdown()
             schedule_info = await self.bot_manager.get_schedule_info()
 
-            logger.info(f"Countdown data: {countdown}")
-            logger.info(f"Schedule info: {schedule_info}")
-
             if countdown is None or schedule_info is None:
                 await update.message.reply_text("❌ Ошибка при получении информации о расписании.")
                 return
@@ -265,23 +263,25 @@ class AgroTelegramBot:
             # Формируем информацию о расписании
             text = "📅 *Расписание генерации отчетов*\n\n"
             
-            logger.info(f"Начинаем формировать текст расписания")
+            # Московский часовой пояс
+            moscow_tz = pytz.timezone('Europe/Moscow')
+            
             schedule_type = countdown.get("type")
-            logger.info(f"Schedule type: {schedule_type}")
             
             if schedule_type == "one_time":
-                logger.info("Обрабатываем one_time расписание")
                 text += "🔄 Тип: Разовая генерация\n"
                 scheduled_time = countdown.get("scheduled_time")
                 if scheduled_time:
                     try:
                         # Парсим дату, убираем 'Z' и добавляем timezone
                         if 'T' in scheduled_time:
-                            dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
+                            dt_utc = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
                         else:
                             # Если формат без T, пробуем другой парсинг
-                            dt = datetime.fromisoformat(scheduled_time)
-                        text += f"📆 Запланировано: {dt.strftime('%d.%m.%Y %H:%M')} UTC\n"
+                            dt_utc = datetime.fromisoformat(scheduled_time)
+                        # Конвертируем в московское время
+                        dt_moscow = dt_utc.astimezone(moscow_tz)
+                        text += f"📆 Запланировано: {dt_moscow.strftime('%d.%m.%Y %H:%M')} МСК\n"
                     except Exception as e:
                         logger.error(f"Ошибка парсинга scheduled_time '{scheduled_time}': {e}")
                         text += f"📆 Запланировано: {scheduled_time}\n"
@@ -295,33 +295,37 @@ class AgroTelegramBot:
                 elif not countdown.get("is_enabled"):
                     text += "❌ Задача отключена\n"
             elif schedule_type == "periodic":
-                logger.info("Обрабатываем periodic расписание")
                 text += "🔄 Тип: Периодическая генерация\n"
                 periodic_time = countdown.get("periodic_time")
-                logger.info(f"Periodic time: {periodic_time}")
                 if periodic_time:
-                    text += f"⏰ Время: {periodic_time} (ежедневно, UTC)\n"
+                    # Парсим UTC время и конвертируем в МСК
+                    try:
+                        utc_hour, utc_minute = map(int, periodic_time.split(":"))
+                        # Создаем время в UTC
+                        utc_time = datetime.now(pytz.utc).replace(hour=utc_hour, minute=utc_minute, second=0, microsecond=0)
+                        # Конвертируем в московское время
+                        msk_time = utc_time.astimezone(moscow_tz)
+                        text += f"⏰ Время: {msk_time.strftime('%H:%M')} МСК (ежедневно)\n"
+                    except:
+                        text += f"⏰ Время: {periodic_time} UTC (ежедневно)\n"
             
-            logger.info("Добавляем email")
             # Email получателя
             if schedule_info.get("recipient_email"):
                 text += f"📧 Email: {schedule_info['recipient_email']}\n"
             
-            logger.info("Добавляем обратный отсчёт")
             # Обратный отсчёт
             seconds_left = countdown.get("seconds_left", 0)
-            logger.info(f"Seconds left: {seconds_left}")
             if seconds_left > 0:
                 hours = seconds_left // 3600
                 minutes = (seconds_left % 3600) // 60
                 text += f"\n⏳ До генерации: {int(hours)} ч. {int(minutes)} мин.\n"
             
-            logger.info("Проверяем last_run")
             # Последний запуск
             if schedule_info.get("last_run"):
                 try:
-                    last_run_dt = datetime.fromisoformat(schedule_info["last_run"].replace('Z', '+00:00'))
-                    text += f"✅ Последний запуск: {last_run_dt.strftime('%d.%m.%Y %H:%M')} UTC\n"
+                    last_run_utc = datetime.fromisoformat(schedule_info["last_run"].replace('Z', '+00:00'))
+                    last_run_moscow = last_run_utc.astimezone(moscow_tz)
+                    text += f"✅ Последний запуск: {last_run_moscow.strftime('%d.%m.%Y %H:%M')} МСК\n"
                 except Exception as e:
                     logger.error(f"Ошибка парсинга last_run: {e}")
 
@@ -379,9 +383,9 @@ class AgroTelegramBot:
                     f"✅ Файл *{document.file_name}* загружен в систему!\n\n"
                     f"📁 Всего файлов в системе: {files_count}\n\n"
                     f"Файл будет обработан автоматически согласно расписанию.",
-                    parse_mode="Markdown",
-                    reply_markup=reply_markup,
-                )
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
+            )
             else:
                 await update.message.reply_text("❌ Ошибка при загрузке файла в систему.")
 
@@ -443,9 +447,6 @@ class AgroTelegramBot:
             countdown = await self.bot_manager.get_schedule_countdown()
             schedule_info = await self.bot_manager.get_schedule_info()
 
-            logger.info(f"Countdown data (callback): {countdown}")
-            logger.info(f"Schedule info (callback): {schedule_info}")
-
             if countdown is None or schedule_info is None:
                 await query.edit_message_text("❌ Ошибка при получении информации о расписании.")
                 return
@@ -462,6 +463,9 @@ class AgroTelegramBot:
             # Формируем информацию о расписании
             text = "📅 *Расписание генерации отчетов*\n\n"
             
+            # Московский часовой пояс
+            moscow_tz = pytz.timezone('Europe/Moscow')
+            
             schedule_type = countdown.get("type")
             if schedule_type == "one_time":
                 text += "🔄 Тип: Разовая генерация\n"
@@ -470,11 +474,13 @@ class AgroTelegramBot:
                     try:
                         # Парсим дату, убираем 'Z' и добавляем timezone
                         if 'T' in scheduled_time:
-                            dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
+                            dt_utc = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
                         else:
                             # Если формат без T, пробуем другой парсинг
-                            dt = datetime.fromisoformat(scheduled_time)
-                        text += f"📆 Запланировано: {dt.strftime('%d.%m.%Y %H:%M')} UTC\n"
+                            dt_utc = datetime.fromisoformat(scheduled_time)
+                        # Конвертируем в московское время
+                        dt_moscow = dt_utc.astimezone(moscow_tz)
+                        text += f"📆 Запланировано: {dt_moscow.strftime('%d.%m.%Y %H:%M')} МСК\n"
                     except Exception as e:
                         logger.error(f"Ошибка парсинга scheduled_time '{scheduled_time}': {e}")
                         text += f"📆 Запланировано: {scheduled_time}\n"
@@ -491,7 +497,16 @@ class AgroTelegramBot:
                 text += "🔄 Тип: Периодическая генерация\n"
                 periodic_time = countdown.get("periodic_time")
                 if periodic_time:
-                    text += f"⏰ Время: {periodic_time} (ежедневно, UTC)\n"
+                    # Парсим UTC время и конвертируем в МСК
+                    try:
+                        utc_hour, utc_minute = map(int, periodic_time.split(":"))
+                        # Создаем время в UTC
+                        utc_time = datetime.now(pytz.utc).replace(hour=utc_hour, minute=utc_minute, second=0, microsecond=0)
+                        # Конвертируем в московское время
+                        msk_time = utc_time.astimezone(moscow_tz)
+                        text += f"⏰ Время: {msk_time.strftime('%H:%M')} МСК (ежедневно)\n"
+                    except:
+                        text += f"⏰ Время: {periodic_time} UTC (ежедневно)\n"
             
             # Email получателя
             if schedule_info.get("recipient_email"):
@@ -507,8 +522,9 @@ class AgroTelegramBot:
             # Последний запуск
             if schedule_info.get("last_run"):
                 try:
-                    last_run_dt = datetime.fromisoformat(schedule_info["last_run"].replace('Z', '+00:00'))
-                    text += f"✅ Последний запуск: {last_run_dt.strftime('%d.%m.%Y %H:%M')} UTC\n"
+                    last_run_utc = datetime.fromisoformat(schedule_info["last_run"].replace('Z', '+00:00'))
+                    last_run_moscow = last_run_utc.astimezone(moscow_tz)
+                    text += f"✅ Последний запуск: {last_run_moscow.strftime('%d.%m.%Y %H:%M')} МСК\n"
                 except Exception as e:
                     logger.error(f"Ошибка парсинга last_run: {e}")
 
