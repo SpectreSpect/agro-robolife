@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import tempfile
+import os
 from pathlib import Path
 from typing import Optional
+from datetime import datetime, timezone
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -28,9 +30,15 @@ class AgroTelegramBot:
     def __init__(self):
         self.application = None
         self.bot_manager = bot_manager
+        # Хранилище для соответствия индекс -> имя файла (для callback_data)
+        self.file_index_cache = {}
+        # Хранилище для текущей страницы пользователя
+        self.user_page = {}
+        # Количество файлов на странице
+        self.files_per_page = 5
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-
+        """Команда /start - приветствие с кнопками управления"""
         user = update.effective_user
 
         welcome_text = f"""
@@ -38,12 +46,18 @@ class AgroTelegramBot:
 
 Привет, {user.first_name}! 👋
 
-Я помогу вам обработать Excel файлы с данными о сельскохозяйственных операциях.
+Я помогу вам управлять Excel файлами для автоматической генерации отчетов.
+
+*Что я умею:*
+📁 Загружать файлы в систему
+🗑️ Удалять файлы
+📅 Показывать расписание генерации отчетов
 
 *Как использовать:*
-1️⃣ Отправьте Excel файлы (дневные отчеты или оперативную отчетность)
-2️⃣ Нажмите кнопку "Обработать файлы"
-3️⃣ Получите готовый результат с формулами и сводными таблицами
+1️⃣ Отправьте Excel файлы (.xlsx, .xls)
+2️⃣ Файлы автоматически загрузятся в систему
+3️⃣ Администратор настроит расписание генерации
+4️⃣ Отчеты будут создаваться автоматически
 
 *Поддерживаемые файлы:*
 • Таблица_для_дневного_отчета_*.xlsx
@@ -51,16 +65,17 @@ class AgroTelegramBot:
 • Любые другие Excel файлы (.xlsx, .xls)
 
 *Команды:*
-/start - Начать работу
-/help - Помощь
-/history - История обработок
-/status - Статус текущей задачи
+/files - Список загруженных файлов
+/schedule - Расписание генерации
+/help - Подробная справка
 
 Готов к работе! 🚀
         """
 
         keyboard = [
-            [InlineKeyboardButton("📁 Загрузить файлы", callback_data="upload_files")],
+            [InlineKeyboardButton("📁 Список файлов", callback_data="show_files")],
+            [InlineKeyboardButton("📅 Расписание", callback_data="show_schedule")],
+            [InlineKeyboardButton("❓ Помощь", callback_data="show_help")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -69,128 +84,257 @@ class AgroTelegramBot:
         )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-
+        """Команда /help - справка по использованию"""
         help_text = """
 ❓ *Помощь по использованию бота*
 
 *Основные функции:*
-• Загрузка Excel файлов с сельскохозяйственными данными
-• Автоматическая обработка и структурирование данных
-• Получение готового Excel файла с формулами
+• Загрузка файлов в систему для обработки
+• Просмотр списка загруженных файлов
+• Удаление файлов из системы
+• Просмотр расписания автоматической генерации отчетов
 
 *Поддерживаемые форматы:*
 • Дневные отчеты: `Таблица_для_дневного_отчета_*.xlsx`
 • Оперативная отчетность: `Оперативная_отчетность_*.xlsx`
 • Другие Excel файлы: `.xlsx`, `.xls`
 
-*Процесс обработки:*
-1. Отправьте один или несколько Excel файлов
-2. Нажмите кнопку "Обработать файлы"
-3. Дождитесь завершения обработки
-4. Скачайте готовый результат
+*Как работает система:*
+1. Вы загружаете Excel файлы через бота
+2. Файлы сохраняются в общей папке системы
+3. Администратор настраивает расписание генерации
+4. Система автоматически создает отчеты по расписанию
+5. Готовые отчеты отправляются на email
 
 *Команды:*
-/start - Начать работу
+/start - Главное меню
+/files - Список загруженных файлов
+/schedule - Расписание генерации отчетов
 /help - Эта справка
-/history - Показать историю обработок
-/status - Статус текущей задачи
 
-*Возможные проблемы:*
-• Убедитесь, что FastAPI сервер запущен
-• Проверьте формат файлов (только Excel)
-• При ошибках попробуйте перезапустить бота
+*Загрузка файлов:*
+Просто отправьте Excel файл боту, он автоматически загрузится в систему.
+
+*Управление файлами:*
+Используйте команду /files для просмотра и удаления файлов.
+
+*Расписание:*
+Команда /schedule покажет, когда будет следующая генерация отчета.
         """
 
         await update.message.reply_text(help_text, parse_mode="Markdown")
 
-    async def history_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-
+    async def files_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /files - показать список загруженных файлов"""
         user_id = update.effective_user.id
+        # Сбрасываем на первую страницу при новом запросе
+        self.user_page[user_id] = 0
+        await self._show_files_page(update.message, user_id)
 
+    async def _show_files_page(self, message, user_id: int, edit_mode: bool = False):
+        """Внутренняя функция для отображения страницы со списком файлов"""
         try:
-            history = await self.bot_manager.get_history(user_id)
+            files_list = await self.bot_manager.get_files_list()
 
-            if not history:
-                await update.message.reply_text("📊 История обработок пуста.")
+            if files_list is None:
+                text = "❌ Ошибка при получении списка файлов."
+                if edit_mode:
+                    await message.edit_text(text)
+                else:
+                    await message.reply_text(text)
                 return
 
-            text = "📊 *История обработок:*\n\n"
-
-            for i, job in enumerate(history[:5], 1):  # Показываем последние 5
-                status_emoji = {
-                    "completed": "✅",
-                    "processing": "⏳",
-                    "failed": "❌",
-                    "pending": "⏸️",
-                }.get(job["status"], "❓")
-
-                text += f"{i}. {status_emoji} *Задача #{job['id']}*\n"
-                text += f"   📅 {job['created_at'][:19]}\n"
-                text += f"   📁 Файлов: {len(job.get('input_files', []))}\n"
-
-                if job["status"] == "completed":
-                    text += f"   📊 Записей: {job.get('records_count', 0)}\n"
-                    text += f"   🏢 Подразделений: {job.get('departments_count', 0)}\n"
-                elif job["status"] == "failed":
-                    text += f"   ❌ Ошибка: {job.get('error_message', 'Неизвестная ошибка')}\n"
-
-                text += "\n"
-
-            await update.message.reply_text(text, parse_mode="Markdown")
-
-        except Exception as e:
-            logger.error(f"Ошибка при получении истории: {e}")
-            await update.message.reply_text("❌ Ошибка при получении истории.")
-
-    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-        user_id = update.effective_user.id
-        session = self.bot_manager.get_user_session(user_id)
-
-        if not session["current_job_id"]:
-            await update.message.reply_text("❌ Нет активных задач.")
-            return
-
-        try:
-            job_status = await self.bot_manager.get_job_status(user_id)
-
-            if not job_status:
-                await update.message.reply_text("❌ Не удалось получить статус задачи.")
+            if not files_list:
+                text = "📁 *Список файлов пуст*\n\n" \
+                       "Отправьте Excel файлы боту для загрузки в систему."
+                if edit_mode:
+                    await message.edit_text(text, parse_mode="Markdown")
+                else:
+                    await message.reply_text(text, parse_mode="Markdown")
                 return
 
-            status_emoji = {
-                "completed": "✅",
-                "processing": "⏳",
-                "failed": "❌",
-                "pending": "⏸️",
-            }.get(job_status["status"], "❓")
-
-            text = f"{status_emoji} *Статус задачи #{job_status['id']}*\n\n"
-            text += f"📅 Создана: {job_status['created_at'][:19]}\n"
-            text += f"📁 Файлов: {len(job_status.get('input_files', []))}\n"
-
-            if job_status["status"] == "completed":
-                text += f"📊 Записей: {job_status.get('records_count', 0)}\n"
-                text += f"🏢 Подразделений: {job_status.get('departments_count', 0)}\n"
-                text += f"⚙️ Операций: {job_status.get('operations_count', 0)}\n"
-                text += f"🌾 Культур: {job_status.get('crops_count', 0)}\n"
-                text += "\n✅ *Обработка завершена!*"
-            elif job_status["status"] == "processing":
-                text += "\n⏳ *Обработка в процессе...*"
-            elif job_status["status"] == "failed":
-                text += f"\n❌ *Ошибка:* {job_status.get('error_message', 'Неизвестная ошибка')}"
+            # Получаем текущую страницу
+            current_page = self.user_page.get(user_id, 0)
+            total_files = len(files_list)
+            total_pages = (total_files + self.files_per_page - 1) // self.files_per_page
+            
+            # Проверяем границы
+            if current_page < 0:
+                current_page = 0
+            if current_page >= total_pages:
+                current_page = total_pages - 1
+            
+            self.user_page[user_id] = current_page
+            
+            # Вычисляем диапазон файлов для текущей страницы
+            start_idx = current_page * self.files_per_page
+            end_idx = min(start_idx + self.files_per_page, total_files)
+            
+            # Формируем текст
+            text = f"📁 *Загруженные файлы ({total_files})*\n"
+            text += f"_Страница {current_page + 1} из {total_pages}_\n\n"
+            
+            # Сохраняем соответствие индекс -> имя файла для этого пользователя
+            if user_id not in self.file_index_cache:
+                self.file_index_cache[user_id] = {}
+            
+            keyboard = []
+            
+            # Показываем файлы текущей страницы
+            for i in range(start_idx, end_idx):
+                file = files_list[i]
+                file_num = i + 1  # Номер файла (начиная с 1)
+                
+                # Форматируем размер файла
+                size_kb = file['size'] / 1024
+                if size_kb < 1024:
+                    size_str = f"{size_kb:.1f} KB"
+                else:
+                    size_str = f"{size_kb/1024:.1f} MB"
+                
+                # Форматируем дату
+                modified_dt = datetime.fromisoformat(file['modified'].replace('Z', '+00:00'))
+                date_str = modified_dt.strftime("%d.%m.%Y %H:%M")
+                
+                text += f"{file_num}. `{file['name']}`\n"
+                text += f"   📊 Размер: {size_str}\n"
+                text += f"   📅 Изменен: {date_str}\n\n"
+                
+                # Сохраняем имя файла по индексу
+                self.file_index_cache[user_id][file_num] = file['name']
+                
+                # Кнопка удаления с индексом
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"🗑️ {file_num}. {file['name'][:25]}...", 
+                        callback_data=f"delete_file:{file_num}"
+                    )
+                ])
+            
+            # Добавляем кнопки навигации
+            nav_buttons = []
+            if current_page > 0:
+                nav_buttons.append(
+                    InlineKeyboardButton("◀️ Назад", callback_data="files_prev")
+                )
+            if current_page < total_pages - 1:
+                nav_buttons.append(
+                    InlineKeyboardButton("Вперёд ▶️", callback_data="files_next")
+                )
+            
+            if nav_buttons:
+                keyboard.append(nav_buttons)
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            if edit_mode:
+                await message.edit_text(text, parse_mode="Markdown", reply_markup=reply_markup)
             else:
-                text += f"\n⏸️ *Статус:* {job_status['status']}"
-
-            await update.message.reply_text(text, parse_mode="Markdown")
+                await message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
 
         except Exception as e:
-            logger.error(f"Ошибка при получении статуса: {e}")
-            await update.message.reply_text("❌ Ошибка при получении статуса.")
+            logger.error(f"Ошибка при получении списка файлов: {e}")
+            text = "❌ Ошибка при получении списка файлов."
+            if edit_mode:
+                await message.edit_text(text)
+            else:
+                await message.reply_text(text)
+
+    async def schedule_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /schedule - показать расписание генерации"""
+        try:
+            countdown = await self.bot_manager.get_schedule_countdown()
+            schedule_info = await self.bot_manager.get_schedule_info()
+
+            logger.info(f"Countdown data: {countdown}")
+            logger.info(f"Schedule info: {schedule_info}")
+
+            if countdown is None or schedule_info is None:
+                await update.message.reply_text("❌ Ошибка при получении информации о расписании.")
+                return
+
+            if not countdown.get("active", False):
+                await update.message.reply_text(
+                    "📅 *Расписание генерации*\n\n"
+                    "❌ Расписание не установлено\n\n"
+                    "Администратор может настроить автоматическую генерацию отчетов через веб-интерфейс.",
+                    parse_mode="Markdown"
+                )
+                return
+
+            # Формируем информацию о расписании
+            text = "📅 *Расписание генерации отчетов*\n\n"
+            
+            logger.info(f"Начинаем формировать текст расписания")
+            schedule_type = countdown.get("type")
+            logger.info(f"Schedule type: {schedule_type}")
+            
+            if schedule_type == "one_time":
+                logger.info("Обрабатываем one_time расписание")
+                text += "🔄 Тип: Разовая генерация\n"
+                scheduled_time = countdown.get("scheduled_time")
+                if scheduled_time:
+                    try:
+                        # Парсим дату, убираем 'Z' и добавляем timezone
+                        if 'T' in scheduled_time:
+                            dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
+                        else:
+                            # Если формат без T, пробуем другой парсинг
+                            dt = datetime.fromisoformat(scheduled_time)
+                        text += f"📆 Запланировано: {dt.strftime('%d.%m.%Y %H:%M')} UTC\n"
+                    except Exception as e:
+                        logger.error(f"Ошибка парсинга scheduled_time '{scheduled_time}': {e}")
+                        text += f"📆 Запланировано: {scheduled_time}\n"
+                
+                # Проверяем статус задачи
+                if countdown.get("expired"):
+                    if countdown.get("is_enabled"):
+                        text += "⚠️ Время выполнения прошло (задача ещё активна)\n"
+                    else:
+                        text += "✅ Задача выполнена\n"
+                elif not countdown.get("is_enabled"):
+                    text += "❌ Задача отключена\n"
+            elif schedule_type == "periodic":
+                logger.info("Обрабатываем periodic расписание")
+                text += "🔄 Тип: Периодическая генерация\n"
+                periodic_time = countdown.get("periodic_time")
+                logger.info(f"Periodic time: {periodic_time}")
+                if periodic_time:
+                    text += f"⏰ Время: {periodic_time} (ежедневно, UTC)\n"
+            
+            logger.info("Добавляем email")
+            # Email получателя
+            if schedule_info.get("recipient_email"):
+                text += f"📧 Email: {schedule_info['recipient_email']}\n"
+            
+            logger.info("Добавляем обратный отсчёт")
+            # Обратный отсчёт
+            seconds_left = countdown.get("seconds_left", 0)
+            logger.info(f"Seconds left: {seconds_left}")
+            if seconds_left > 0:
+                hours = seconds_left // 3600
+                minutes = (seconds_left % 3600) // 60
+                text += f"\n⏳ До генерации: {int(hours)} ч. {int(minutes)} мин.\n"
+            
+            logger.info("Проверяем last_run")
+            # Последний запуск
+            if schedule_info.get("last_run"):
+                try:
+                    last_run_dt = datetime.fromisoformat(schedule_info["last_run"].replace('Z', '+00:00'))
+                    text += f"✅ Последний запуск: {last_run_dt.strftime('%d.%m.%Y %H:%M')} UTC\n"
+                except Exception as e:
+                    logger.error(f"Ошибка парсинга last_run: {e}")
+
+            logger.info(f"Отправляем сообщение о расписании: {repr(text)}")
+            await update.message.reply_text(text, parse_mode="Markdown")
+            logger.info("Сообщение отправлено успешно")
+
+        except Exception as e:
+            logger.error(f"Ошибка при получении расписания: {e}", exc_info=True)
+            await update.message.reply_text("❌ Ошибка при получении расписания.")
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-        user_id = update.effective_user.id
+        """Обработка загруженного документа - сразу загружаем в shared_files"""
         document = update.message.document
 
         if not document.file_name.lower().endswith((".xlsx", ".xls")):
@@ -200,38 +344,46 @@ class AgroTelegramBot:
             return
 
         try:
-
+            # Скачиваем файл во временную директорию
             file = await context.bot.get_file(document.file_id)
 
             with tempfile.NamedTemporaryFile(
                 delete=False, suffix=f"_{document.file_name}"
             ) as tmp_file:
                 await file.download_to_drive(tmp_file.name)
+                tmp_path = tmp_file.name
 
-                self.bot_manager.add_file_to_session(
-                    user_id, tmp_file.name, document.file_name
-                )
-
-            session = self.bot_manager.get_user_session(user_id)
-            files_count = len(session["files"])
-
-            keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "🔄 Обработать файлы", callback_data="process_files"
-                    )
-                ],
-                [InlineKeyboardButton("🗑️ Очистить", callback_data="clear_files")],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            await update.message.reply_text(
-                f"✅ Файл *{document.file_name}* загружен!\n\n"
-                f"📁 Всего файлов: {files_count}\n\n"
-                f"Нажмите кнопку для обработки или загрузите еще файлы.",
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
+            # Загружаем файл в shared_files через API
+            success = await self.bot_manager.upload_file_to_shared(
+                tmp_path, document.file_name
             )
+
+            # Удаляем временный файл
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+
+            if success:
+                # Получаем обновленный список файлов
+                files_list = await self.bot_manager.get_files_list()
+                files_count = len(files_list) if files_list else 0
+
+                keyboard = [
+                    [InlineKeyboardButton("📁 Список файлов", callback_data="show_files")],
+                    [InlineKeyboardButton("📅 Расписание", callback_data="show_schedule")],
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+                await update.message.reply_text(
+                    f"✅ Файл *{document.file_name}* загружен в систему!\n\n"
+                    f"📁 Всего файлов в системе: {files_count}\n\n"
+                    f"Файл будет обработан автоматически согласно расписанию.",
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup,
+                )
+            else:
+                await update.message.reply_text("❌ Ошибка при загрузке файла в систему.")
 
         except Exception as e:
             logger.error(f"Ошибка при загрузке файла: {e}")
@@ -240,135 +392,204 @@ class AgroTelegramBot:
     async def handle_callback_query(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
-
+        """Обработка callback кнопок"""
         query = update.callback_query
         await query.answer()
 
-        user_id = update.effective_user.id
+        if query.data == "show_files":
+            await self.show_files_callback(query)
 
-        if query.data == "upload_files":
-            await query.edit_message_text(
-                "📁 *Загрузка файлов*\n\n"
-                "Отправьте Excel файлы для обработки.\n"
-                "Поддерживаются форматы: .xlsx, .xls",
-                parse_mode="Markdown",
-            )
-
-        elif query.data == "show_history":
-            await self.history_command(update, context)
+        elif query.data == "show_schedule":
+            await self.show_schedule_callback(query)
 
         elif query.data == "show_help":
-            await self.help_command(update, context)
+            await self.show_help_callback(query)
 
-        elif query.data == "process_files":
-            await self.process_files_callback(query, user_id)
+        elif query.data == "files_prev":
+            await self.files_prev_callback(query)
 
-        elif query.data == "clear_files":
-            await self.clear_files_callback(query, user_id)
+        elif query.data == "files_next":
+            await self.files_next_callback(query)
 
-        elif query.data == "download_result":
-            await self.download_result_callback(query, user_id)
+        elif query.data.startswith("delete_file:"):
+            file_index = query.data.split(":", 1)[1]
+            await self.delete_file_callback(query, file_index)
 
-    async def process_files_callback(self, query, user_id: int):
+    async def show_files_callback(self, query):
+        """Callback для показа списка файлов"""
+        user_id = query.from_user.id
+        # Сбрасываем на первую страницу
+        self.user_page[user_id] = 0
+        await self._show_files_page(query.message, user_id, edit_mode=True)
 
-        session = self.bot_manager.get_user_session(user_id)
+    async def files_prev_callback(self, query):
+        """Callback для перехода на предыдущую страницу"""
+        user_id = query.from_user.id
+        current_page = self.user_page.get(user_id, 0)
+        if current_page > 0:
+            self.user_page[user_id] = current_page - 1
+        await self._show_files_page(query.message, user_id, edit_mode=True)
 
-        if not session["files"]:
-            await query.edit_message_text("❌ Нет файлов для обработки.")
-            return
+    async def files_next_callback(self, query):
+        """Callback для перехода на следующую страницу"""
+        user_id = query.from_user.id
+        current_page = self.user_page.get(user_id, 0)
+        self.user_page[user_id] = current_page + 1
+        await self._show_files_page(query.message, user_id, edit_mode=True)
 
+    async def show_schedule_callback(self, query):
+        """Callback для показа расписания"""
         try:
+            countdown = await self.bot_manager.get_schedule_countdown()
+            schedule_info = await self.bot_manager.get_schedule_info()
 
-            await query.edit_message_text("📤 Загружаю файлы на сервер...")
+            logger.info(f"Countdown data (callback): {countdown}")
+            logger.info(f"Schedule info (callback): {schedule_info}")
 
-            upload_result = await self.bot_manager.upload_files(user_id)
-
-            if not upload_result:
-                await query.edit_message_text("❌ Ошибка при загрузке файлов.")
+            if countdown is None or schedule_info is None:
+                await query.edit_message_text("❌ Ошибка при получении информации о расписании.")
                 return
 
-            await query.edit_message_text("⚙️ Запускаю обработку...")
-
-            process_result = await self.bot_manager.process_files(user_id)
-
-            if not process_result:
-                await query.edit_message_text("❌ Ошибка при запуске обработки.")
-                return
-
-            keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "📥 Скачать результат", callback_data="download_result"
-                    )
-                ]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            await query.edit_message_text(
-                "✅ *Обработка запущена!*\n\n"
-                f"📋 Задача: #{upload_result['job_id']}\n"
-                f"📁 Файлов: {len(upload_result['files'])}\n\n"
-                "Используйте кнопки для управления:",
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
-            )
-
-        except Exception as e:
-            logger.error(f"Ошибка при обработке файлов: {e}")
-            await query.edit_message_text("❌ Ошибка при обработке файлов.")
-
-    async def clear_files_callback(self, query, user_id: int):
-
-        await self.bot_manager.cleanup_user_files(user_id)
-        self.bot_manager.clear_user_session(user_id)
-
-        await query.edit_message_text("🗑️ Файлы очищены. Можете загружать новые.")
-
-    async def download_result_callback(self, query, user_id: int):
-
-        try:
-
-            job_status = await self.bot_manager.get_job_status(user_id)
-
-            if not job_status:
-                await query.edit_message_text("❌ Не удалось получить статус задачи.")
-                return
-
-            if job_status["status"] != "completed":
+            if not countdown.get("active", False):
                 await query.edit_message_text(
-                    f"⏳ Обработка еще не завершена.\n"
-                    f"Статус: {job_status['status']}"
+                    "📅 *Расписание генерации*\n\n"
+                    "❌ Расписание не установлено\n\n"
+                    "Администратор может настроить автоматическую генерацию отчетов через веб-интерфейс.",
+                    parse_mode="Markdown"
                 )
                 return
 
-            await query.edit_message_text("📥 Скачиваю результат...")
+            # Формируем информацию о расписании
+            text = "📅 *Расписание генерации отчетов*\n\n"
+            
+            schedule_type = countdown.get("type")
+            if schedule_type == "one_time":
+                text += "🔄 Тип: Разовая генерация\n"
+                scheduled_time = countdown.get("scheduled_time")
+                if scheduled_time:
+                    try:
+                        # Парсим дату, убираем 'Z' и добавляем timezone
+                        if 'T' in scheduled_time:
+                            dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
+                        else:
+                            # Если формат без T, пробуем другой парсинг
+                            dt = datetime.fromisoformat(scheduled_time)
+                        text += f"📆 Запланировано: {dt.strftime('%d.%m.%Y %H:%M')} UTC\n"
+                    except Exception as e:
+                        logger.error(f"Ошибка парсинга scheduled_time '{scheduled_time}': {e}")
+                        text += f"📆 Запланировано: {scheduled_time}\n"
+                
+                # Проверяем статус задачи
+                if countdown.get("expired"):
+                    if countdown.get("is_enabled"):
+                        text += "⚠️ Время выполнения прошло (задача ещё активна)\n"
+                    else:
+                        text += "✅ Задача выполнена\n"
+                elif not countdown.get("is_enabled"):
+                    text += "❌ Задача отключена\n"
+            elif schedule_type == "periodic":
+                text += "🔄 Тип: Периодическая генерация\n"
+                periodic_time = countdown.get("periodic_time")
+                if periodic_time:
+                    text += f"⏰ Время: {periodic_time} (ежедневно, UTC)\n"
+            
+            # Email получателя
+            if schedule_info.get("recipient_email"):
+                text += f"📧 Email: {schedule_info['recipient_email']}\n"
+            
+            # Обратный отсчёт
+            seconds_left = countdown.get("seconds_left", 0)
+            if seconds_left > 0:
+                hours = seconds_left // 3600
+                minutes = (seconds_left % 3600) // 60
+                text += f"\n⏳ До генерации: {int(hours)} ч. {int(minutes)} мин.\n"
+            
+            # Последний запуск
+            if schedule_info.get("last_run"):
+                try:
+                    last_run_dt = datetime.fromisoformat(schedule_info["last_run"].replace('Z', '+00:00'))
+                    text += f"✅ Последний запуск: {last_run_dt.strftime('%d.%m.%Y %H:%M')} UTC\n"
+                except Exception as e:
+                    logger.error(f"Ошибка парсинга last_run: {e}")
 
-            result_data = await self.bot_manager.download_result(user_id)
-
-            if not result_data:
-                await query.edit_message_text("❌ Ошибка при скачивании результата.")
-                return
-
-            session = self.bot_manager.get_user_session(user_id)
-            job_id = session["current_job_id"]
-            filename = f"processed_{job_id}.xlsx"
-
-            await query.message.reply_document(
-                document=result_data,
-                filename=filename,
-                caption=f"✅ *Обработка завершена!*\n\n"
-                f"📊 Записей: {job_status.get('records_count', 0)}\n"
-                f"🏢 Подразделений: {job_status.get('departments_count', 0)}\n"
-                f"⚙️ Операций: {job_status.get('operations_count', 0)}\n"
-                f"🌾 Культур: {job_status.get('crops_count', 0)}",
-                parse_mode="Markdown",
-            )
-
-            self.bot_manager.clear_user_session(user_id)
+            logger.info(f"Отправляем сообщение о расписании (callback): {text}")
+            await query.edit_message_text(text, parse_mode="Markdown")
 
         except Exception as e:
-            logger.error(f"Ошибка при скачивании результата: {e}")
-            await query.edit_message_text("❌ Ошибка при скачивании результата.")
+            logger.error(f"Ошибка при получении расписания: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка при получении расписания.")
+
+    async def show_help_callback(self, query):
+        """Callback для показа справки"""
+        help_text = """
+❓ *Помощь по использованию бота*
+
+*Основные функции:*
+• Загрузка файлов в систему для обработки
+• Просмотр списка загруженных файлов
+• Удаление файлов из системы
+• Просмотр расписания автоматической генерации отчетов
+
+*Поддерживаемые форматы:*
+• Дневные отчеты: `Таблица_для_дневного_отчета_*.xlsx`
+• Оперативная отчетность: `Оперативная_отчетность_*.xlsx`
+• Другие Excel файлы: `.xlsx`, `.xls`
+
+*Как работает система:*
+1. Вы загружаете Excel файлы через бота
+2. Файлы сохраняются в общей папке системы
+3. Администратор настраивает расписание генерации
+4. Система автоматически создает отчеты по расписанию
+5. Готовые отчеты отправляются на email
+
+*Команды:*
+/start - Главное меню
+/files - Список загруженных файлов
+/schedule - Расписание генерации отчетов
+/help - Эта справка
+        """
+
+        await query.edit_message_text(help_text, parse_mode="Markdown")
+
+    async def delete_file_callback(self, query, file_index: str):
+        """Callback для удаления файла"""
+        try:
+            user_id = query.from_user.id
+            file_idx = int(file_index)
+            
+            # Получаем имя файла из кеша
+            if user_id not in self.file_index_cache or file_idx not in self.file_index_cache[user_id]:
+                await query.answer("❌ Файл не найден. Обновите список файлов.", show_alert=True)
+                return
+
+            filename = self.file_index_cache[user_id][file_idx]
+            
+            success = await self.bot_manager.delete_file_from_shared(filename)
+
+            if success:
+                await query.answer(f"✅ Файл удален")
+                
+                # Проверяем, не стала ли текущая страница пустой
+                files_list = await self.bot_manager.get_files_list()
+                if files_list:
+                    current_page = self.user_page.get(user_id, 0)
+                    total_files = len(files_list)
+                    total_pages = (total_files + self.files_per_page - 1) // self.files_per_page
+                    
+                    # Если текущая страница стала больше максимальной, переходим на предыдущую
+                    if current_page >= total_pages and current_page > 0:
+                        self.user_page[user_id] = total_pages - 1
+                
+                # Показываем обновленный список файлов (текущую или предыдущую страницу)
+                await self._show_files_page(query.message, user_id, edit_mode=True)
+            else:
+                await query.answer("❌ Ошибка при удалении файла", show_alert=True)
+
+        except ValueError:
+            await query.answer("❌ Некорректный индекс файла", show_alert=True)
+        except Exception as e:
+            logger.error(f"Ошибка при удалении файла: {e}")
+            await query.answer("❌ Ошибка при удалении файла", show_alert=True)
 
     async def check_fastapi_connection(self) -> bool:
 
@@ -395,18 +616,28 @@ class AgroTelegramBot:
 
         self.application = Application.builder().token(config.telegram_token).build()
 
+        # Регистрируем команды
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("history", self.history_command))
-        self.application.add_handler(CommandHandler("status", self.status_command))
+        self.application.add_handler(CommandHandler("files", self.files_command))
+        self.application.add_handler(CommandHandler("schedule", self.schedule_command))
+        
+        # Обработчик документов
         self.application.add_handler(
             MessageHandler(filters.Document.ALL, self.handle_document)
         )
+        
+        # Обработчик callback кнопок
         self.application.add_handler(CallbackQueryHandler(self.handle_callback_query))
 
         logger.info("Запуск Telegram бота...")
         print("Telegram бот запущен!")
         print("Отправьте /start в Telegram для начала работы")
+        print("\nДоступные команды:")
+        print("  /start - Главное меню")
+        print("  /files - Список загруженных файлов")
+        print("  /schedule - Расписание генерации")
+        print("  /help - Справка")
 
         self.application.run_polling()
 

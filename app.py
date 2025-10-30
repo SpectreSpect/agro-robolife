@@ -380,11 +380,18 @@ async def get_countdown():
     try:
         schedule = scheduler.get_active_schedule()
         
-        if not schedule or not schedule.get("is_enabled"):
+        if not schedule:
             return {"active": False}
         
+        # Для разовых задач показываем даже если is_enabled=False (уже выполнены)
         if schedule["schedule_type"] == "one_time" and schedule["scheduled_time"]:
+            # Парсим scheduled_time (может быть aware или naive)
             scheduled_dt = datetime.fromisoformat(schedule["scheduled_time"])
+            
+            # Убираем timezone для корректного сравнения
+            if scheduled_dt.tzinfo is not None:
+                scheduled_dt = scheduled_dt.replace(tzinfo=None)
+            
             now = datetime.now(timezone.utc).replace(tzinfo=None)
             
             if scheduled_dt > now:
@@ -393,8 +400,23 @@ async def get_countdown():
                     "active": True,
                     "type": "one_time",
                     "scheduled_time": schedule["scheduled_time"],
-                    "seconds_left": int(seconds_left)
+                    "seconds_left": int(seconds_left),
+                    "is_enabled": schedule.get("is_enabled", False)
                 }
+            else:
+                # Время уже прошло - возвращаем информацию об этом
+                return {
+                    "active": True,
+                    "type": "one_time",
+                    "scheduled_time": schedule["scheduled_time"],
+                    "seconds_left": 0,
+                    "expired": True,
+                    "is_enabled": schedule.get("is_enabled", False)
+                }
+        
+        # Для периодических задач проверяем is_enabled
+        if not schedule.get("is_enabled"):
+            return {"active": False}
         
         elif schedule["schedule_type"] == "periodic" and schedule["periodic_time"]:
             # Вычисляем следующее срабатывание
