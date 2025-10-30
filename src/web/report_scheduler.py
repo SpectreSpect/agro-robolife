@@ -194,6 +194,7 @@ class ReportScheduler:
         try:
             # Отключаем все существующие расписания
             db.query(ScheduleConfig).update({"is_enabled": False})
+            db.commit()  # Сохраняем изменения до создания нового
             
             # Создаем новое расписание
             config = ScheduleConfig(
@@ -243,12 +244,12 @@ class ReportScheduler:
             db.close()
     
     def get_active_schedule(self) -> Optional[dict]:
-        """Получить активное расписание"""
+        """Получить активное расписание (самое новое, если их несколько)"""
         db = SessionLocal()
         try:
             config = db.query(ScheduleConfig).filter(
                 ScheduleConfig.is_enabled == True
-            ).first()
+            ).order_by(ScheduleConfig.created_at.desc()).first()
             
             if config:
                 return config.to_dict()

@@ -418,7 +418,7 @@ async def get_countdown():
         if not schedule.get("is_enabled"):
             return {"active": False}
         
-        elif schedule["schedule_type"] == "periodic" and schedule["periodic_time"]:
+        if schedule["schedule_type"] == "periodic" and schedule["periodic_time"]:
             # Вычисляем следующее срабатывание
             hour, minute = map(int, schedule["periodic_time"].split(":"))
             now = datetime.now(timezone.utc).replace(tzinfo=None)
